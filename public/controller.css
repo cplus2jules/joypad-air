@@ -1,0 +1,279 @@
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: #0b0d12;
+  color: #e6e8ee;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ─── Player picker ───────────────────────── */
+.picker {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px;
+  text-align: center;
+}
+.picker h1 {
+  font-size: 28px;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.picker p {
+  margin: 0;
+  color: #9aa0ad;
+}
+.picker-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+.picker-btn {
+  padding: 18px 28px;
+  border-radius: 18px;
+  font-size: 20px;
+  font-weight: 600;
+  background: #1a1d27;
+  color: #fff;
+  border: 1px solid #2a2f3d;
+  min-width: 150px;
+}
+.picker-btn.p1 { background: linear-gradient(180deg, #ff4f5a, #c92731); }
+.picker-btn.p2 { background: linear-gradient(180deg, #3b9eff, #1d6fd6); }
+.picker-btn:active { transform: scale(0.97); }
+.picker .hint { font-size: 13px; color: #6c7384; max-width: 280px; }
+
+/* ─── Rotate hint ─────────────────────────── */
+.rotate-hint {
+  position: fixed;
+  inset: 0;
+  background: #0b0d12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  font-size: 18px;
+}
+
+/* ─── Pad layout ──────────────────────────── */
+.pad {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 44px 1fr;
+  grid-template-areas:
+    "top top"
+    "left right";
+}
+
+.topbar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 4px 16px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.chip {
+  width: 38px;
+  height: 28px;
+  border-radius: 14px;
+  background: #1a1d27;
+  border: 1px solid #2a2f3d;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c8cdda;
+}
+.chip.active { background: #2a2f3d; color: #fff; }
+.player-label {
+  font-weight: 700;
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: #2a2f3d;
+}
+.player-label.p1 { background: #c92731; color: #fff; }
+.player-label.p2 { background: #1d6fd6; color: #fff; }
+.status {
+  font-size: 11px;
+  color: #6c7384;
+  min-width: 80px;
+  text-align: center;
+}
+.status.ok { color: #5ad07a; }
+.status.err { color: #ff6f7a; }
+
+.side {
+  position: relative;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+}
+.side.left { grid-area: left; }
+.side.right { grid-area: right; }
+
+/* shoulders */
+.shoulders {
+  display: flex;
+  gap: 14px;
+  width: 100%;
+  justify-content: center;
+}
+.shoulder {
+  flex: 1;
+  max-width: 130px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #2a2f3d, #1a1d27);
+  border: 1px solid #353b4d;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #c8cdda;
+}
+.shoulder.active { background: #4a5168; color: #fff; }
+
+/* stick */
+.stick {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  touch-action: none;
+}
+.stick-base {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #1a1d27, #0e1017);
+  border: 2px solid #2a2f3d;
+  box-shadow: inset 0 4px 12px rgba(0,0,0,0.5);
+}
+.stick-thumb {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #3a4055, #1d2230);
+  border: 2px solid #4a5168;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: background 0.1s;
+}
+.stick.active .stick-thumb {
+  background: linear-gradient(180deg, #5a6178, #2d3344);
+}
+
+/* dpad */
+.dpad {
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+.dpad-btn {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  background: #1a1d27;
+  border: 1px solid #2a2f3d;
+  color: #c8cdda;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dpad-btn.active { background: #4a5168; color: #fff; }
+.dpad-btn.up {
+  top: 0; left: 47px;
+  border-radius: 12px 12px 4px 4px;
+}
+.dpad-btn.down {
+  bottom: 0; left: 47px;
+  border-radius: 4px 4px 12px 12px;
+}
+.dpad-btn.left {
+  left: 0; top: 47px;
+  border-radius: 12px 4px 4px 12px;
+}
+.dpad-btn.right {
+  right: 0; top: 47px;
+  border-radius: 4px 12px 12px 4px;
+}
+
+/* face buttons (ABXY in Switch layout: X top, Y left, A right, B bottom) */
+.face {
+  position: relative;
+  width: 150px;
+  height: 150px;
+}
+.face-btn {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 20px;
+  border: 1px solid #2a2f3d;
+  background: #1a1d27;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.face-btn.active { transform: scale(0.95); filter: brightness(1.4); }
+.face-btn.x { top: 0;    left: 47px; }
+.face-btn.y { top: 47px; left: 0;    }
+.face-btn.a { top: 47px; right: 0;   }
+.face-btn.b { bottom: 0; left: 47px; }
+
+/* ─── responsive tweaks ───────────────────── */
+@media (max-height: 380px) {
+  .stick { width: 130px; height: 130px; }
+  .stick-thumb { width: 60px; height: 60px; }
+  .dpad { width: 120px; height: 120px; }
+  .dpad-btn { width: 40px; height: 40px; }
+  .dpad-btn.up, .dpad-btn.down { left: 40px; }
+  .dpad-btn.left, .dpad-btn.right { top: 40px; }
+  .face { width: 130px; height: 130px; }
+  .face-btn { width: 48px; height: 48px; font-size: 18px; }
+  .face-btn.x, .face-btn.b { left: 41px; }
+  .face-btn.y { top: 41px; }
+  .face-btn.a { top: 41px; }
+  .shoulder { height: 36px; font-size: 14px; }
+}

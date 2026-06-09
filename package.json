@@ -1,0 +1,19 @@
+{
+  "name": "switch-controller",
+  "version": "1.0.0",
+  "description": "Convierte 2 iPhones en mandos para Ryujinx en Mac",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.1"
+  }
+}

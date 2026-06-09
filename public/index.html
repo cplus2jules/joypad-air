@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Switch Controller</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Switch Pad" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0b0d12" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="stylesheet" href="controller.css" />
+</head>
+<body>
+  <div id="picker" class="picker">
+    <h1>Switch Controller</h1>
+    <p>Elige tu jugador</p>
+    <div class="picker-row">
+      <button class="picker-btn p1" data-player="1">Player 1</button>
+      <button class="picker-btn p2" data-player="2">Player 2</button>
+    </div>
+    <p class="hint">En el iPhone, agrégalo a la pantalla de inicio para jugar en pantalla completa.</p>
+  </div>
+
+  <div id="rotate-hint" class="rotate-hint" hidden>
+    <div>Gira el teléfono en horizontal</div>
+  </div>
+
+  <div id="pad" class="pad" hidden>
+    <header class="topbar">
+      <button class="chip" data-btn="minus">−</button>
+      <button class="chip" data-btn="capture">◉</button>
+      <div class="player-label" id="playerLabel">P1</div>
+      <div class="status" id="status">conectando…</div>
+      <button class="chip" data-btn="home">⌂</button>
+      <button class="chip" data-btn="plus">+</button>
+    </header>
+
+    <div class="side left">
+      <div class="shoulders">
+        <button class="shoulder" data-btn="zl">ZL</button>
+        <button class="shoulder" data-btn="l">L</button>
+      </div>
+      <div class="stick" data-stick="L">
+        <div class="stick-base"></div>
+        <div class="stick-thumb"></div>
+      </div>
+      <div class="dpad">
+        <button class="dpad-btn up" data-btn="dpad_up">▲</button>
+        <button class="dpad-btn left" data-btn="dpad_left">◀</button>
+        <button class="dpad-btn right" data-btn="dpad_right">▶</button>
+        <button class="dpad-btn down" data-btn="dpad_down">▼</button>
+      </div>
+    </div>
+
+    <div class="side right">
+      <div class="shoulders">
+        <button class="shoulder" data-btn="r">R</button>
+        <button class="shoulder" data-btn="zr">ZR</button>
+      </div>
+      <div class="face">
+        <button class="face-btn x" data-btn="x">X</button>
+        <button class="face-btn y" data-btn="y">Y</button>
+        <button class="face-btn a" data-btn="a">A</button>
+        <button class="face-btn b" data-btn="b">B</button>
+      </div>
+      <div class="stick" data-stick="R">
+        <div class="stick-base"></div>
+        <div class="stick-thumb"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="controller.js"></script>
+</body>
+</html>
