@@ -73,6 +73,10 @@ const state = {
 // botones): el tracker global de hair-triggers los ignora.
 const claimed = new Set();
 
+// Resets duros de controles con estado interno propio (sticks, d-pad).
+// Cada control registra aquí su limpieza para resetLocalControls().
+const controlResets = [];
+
 // ─── DOM ────────────────────────────────────────────────────────────────────
 const elPicker = $("#picker");
 const elPickerToast = $("#picker-toast");
@@ -128,6 +132,10 @@ function wsConnect() {
     setWsStatus("open");
     sendConfig();
     startPing();
+    // El server hizo releaseAllForPlayer cuando cayó el WS anterior: nada
+    // sigue presionado del lado del Mac. Se resetea el estado local para
+    // que la UI no muestre botones/sticks retenidos que ya no existen.
+    resetLocalControls();
   });
 
   socket.addEventListener("message", (ev) => {
@@ -394,6 +402,14 @@ function createStick(zone, stickId) {
   };
   zone.addEventListener("pointerup", end);
   zone.addEventListener("pointercancel", end);
+
+  // Reset duro (reconexión): snap-back visual y se suelta el pointer activo
+  // SIN mandar nada — el server ya soltó todo. El usuario re-presiona.
+  controlResets.push(() => {
+    if (pid !== null) { claimed.delete(pid); pid = null; }
+    zone.classList.remove("active");
+    setThumb(0, 0, true);
+  });
 }
 
 // ─── D-pad unificado (1 superficie, 8 sectores de 45°, rolling) ─────────────
@@ -468,6 +484,14 @@ function createDpad(surface) {
   };
   surface.addEventListener("pointerup", end);
   surface.addEventListener("pointercancel", end);
+
+  // Reset duro (reconexión): limpia held + visual SIN mandar nada — el
+  // server ya soltó todo del lado del Mac.
+  controlResets.push(() => {
+    for (const dir of held) btns[dir].classList.remove("pressed");
+    held.clear();
+    if (pid !== null) { claimed.delete(pid); pid = null; }
+  });
 }
 
 // ─── Hair triggers (barras SL/L/ZL · SR/R/ZR) ───────────────────────────────
@@ -571,6 +595,20 @@ function releaseAllTriggers() {
     }
   }
   triggerPointers.clear();
+}
+
+// Release total del estado local tras (re)conectar: el server suelta todas
+// las teclas del slot en cada caída (releaseAllForPlayer), así que aquí solo
+// hay que poner la UI y el tracking en cero para que sean coherentes. Los
+// d:false que emiten releaseAllTriggers/_forceRelease son inofensivos (el
+// server ignora releases de teclas no presionadas).
+function resetLocalControls() {
+  releaseAllTriggers();
+  $$(".face-btn, .sym-btn", elPad).forEach((el) => {
+    if (typeof el._forceRelease === "function") el._forceRelease();
+  });
+  for (const reset of controlResets) reset();
+  claimed.clear(); // pointers huérfanos: los hair-triggers podrán adoptarlos
 }
 
 // ─── Motion (GIRO → DSU vía server) ─────────────────────────────────────────
