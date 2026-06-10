@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -13,7 +13,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { C, SHADOW } from './src/theme';
 import { haptic } from './src/haptics';
-import { detectHost, SERVER_PORT } from './src/net/connection';
+import { useConnection } from './src/net/connection';
 import Picker from './src/screens/Picker';
 import RecessedBtn from './src/components/RecessedBtn';
 import { SymbolBtn, CaptureBtn, HomeBtn } from './src/components/SymbolButtons';
@@ -54,57 +54,7 @@ export default function App() {
 
 // ── Pad ─────────────────────────────────────────────────
 function Pad({ player, layout, compact, onToggleCompact, onBack }) {
-  const wsRef = useRef(null);
-  const [status, setStatus] = useState('conectando');
-  const host = useMemo(() => detectHost(), []);
-
-  useEffect(() => {
-    let active = true;
-    let reconnectTimer = null;
-
-    const connect = () => {
-      if (!active) return;
-      if (!host) {
-        setStatus('sin host');
-        return;
-      }
-      const url = `ws://${host}:${SERVER_PORT}/?p=${player}`;
-      let socket;
-      try {
-        socket = new WebSocket(url);
-      } catch {
-        if (active) reconnectTimer = setTimeout(connect, 1500);
-        return;
-      }
-      wsRef.current = socket;
-      socket.onopen = () => {
-        if (active) {
-          setStatus('conectado');
-          haptic.light();
-        }
-      };
-      socket.onclose = () => {
-        if (!active) return;
-        setStatus('reconectando');
-        reconnectTimer = setTimeout(connect, 1500);
-      };
-      socket.onerror = () => active && setStatus('error');
-    };
-
-    connect();
-    return () => {
-      active = false;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      try { wsRef.current?.close(); } catch {}
-    };
-  }, [player, host]);
-
-  const send = (obj) => {
-    const ws = wsRef.current;
-    if (ws && ws.readyState === 1) {
-      try { ws.send(JSON.stringify(obj)); } catch {}
-    }
-  };
+  const { status, send } = useConnection(player);
 
   return (
     <View style={s.pad}>
