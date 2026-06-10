@@ -15,7 +15,7 @@ import DPad from '../components/DPad';
 import FaceButtons from '../components/FaceButtons';
 
 // ── Pad ─────────────────────────────────────────────────
-export default function Pad({ player, layout, compact, onToggleCompact, onBack }) {
+export default function Pad({ player, layout, compact, onToggleCompact, onBack, onOpenSettings }) {
   const { status, send } = useConnection(player);
 
   return (
@@ -24,14 +24,16 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack }
         <Pressable onPress={() => { haptic.light(); onBack(); }} style={s.backBtn}>
           <Text style={s.backText}>‹</Text>
         </Pressable>
-        <View
+        <Pressable
+          onLongPress={() => { haptic.medium(); onOpenSettings?.(); }}
+          delayLongPress={400}
           style={[
             s.playerPill,
             { backgroundColor: player === 1 ? C.red : C.blue },
           ]}
         >
           <Text style={s.playerPillText}>CHOCORRAMITO {player}</Text>
-        </View>
+        </Pressable>
         <Text
           style={[
             s.statusText,

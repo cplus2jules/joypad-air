@@ -184,7 +184,7 @@ function PlayerCard({ player, onPick }) {
 }
 
 // ── Picker ──────────────────────────────────────────────
-export default function Picker({ layout, onLayout, onPick }) {
+export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
   const host = detectHost();
   const fade1 = useRef(new Animated.Value(0)).current;
   const fade2 = useRef(new Animated.Value(0)).current;
@@ -213,6 +213,14 @@ export default function Picker({ layout, onLayout, onPick }) {
   return (
     <View style={s.picker}>
       <FloatingBlobs />
+
+      <Pressable
+        onPress={() => { haptic.select(); onOpenSettings?.(); }}
+        style={s.gearBtn}
+        hitSlop={8}
+      >
+        <Text style={s.gearText}>⚙</Text>
+      </Pressable>
 
       <View style={s.pickerContent}>
         {/* ─── Left column: brand ─── */}
@@ -507,4 +515,21 @@ const s = StyleSheet.create({
     letterSpacing: 0.5,
     lineHeight: 14,
   },
+
+  // Botón de ajustes (top-right)
+  gearBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 16,
+    zIndex: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  gearText: { color: 'rgba(255,255,255,0.7)', fontSize: 18, lineHeight: 21 },
 });

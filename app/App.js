@@ -9,6 +9,7 @@ import { C } from './src/theme';
 import { SettingsProvider } from './src/store/settings';
 import Picker from './src/screens/Picker';
 import Pad from './src/screens/Pad';
+import Settings from './src/screens/Settings';
 
 // ── App root ────────────────────────────────────────────
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
   const [player, setPlayer] = useState(null);
   const [layout, setLayout] = useState('full'); // 'full' | 'left' | 'right'
   const [compact, setCompact] = useState(false); // oculta dpad, stick derecho, capture, home
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     ScreenOrientation.lockAsync(
@@ -28,7 +30,12 @@ export default function App() {
       <GestureHandlerRootView style={s.root}>
         <StatusBar hidden />
         {player == null ? (
-          <Picker layout={layout} onLayout={setLayout} onPick={setPlayer} />
+          <Picker
+            layout={layout}
+            onLayout={setLayout}
+            onPick={setPlayer}
+            onOpenSettings={() => setShowSettings(true)}
+          />
         ) : (
           <Pad
             player={player}
@@ -36,6 +43,15 @@ export default function App() {
             compact={compact}
             onToggleCompact={() => setCompact((c) => !c)}
             onBack={() => setPlayer(null)}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        )}
+        {/* Overlay: el Pad sigue montado debajo → el WS no se corta y el
+            config (engage/release/nombre/tema) se reenvía en vivo */}
+        {showSettings && (
+          <Settings
+            initialSlot={player ?? 1}
+            onClose={() => setShowSettings(false)}
           />
         )}
       </GestureHandlerRootView>
