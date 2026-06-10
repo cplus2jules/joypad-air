@@ -359,6 +359,11 @@ function createStick(zone, stickId) {
   let pid = null;
   let ox = 0, oy = 0;
   let lastSend = 0;
+  let trailTimer = null; // trailing-edge del throttle (último move descartado)
+
+  const cancelTrail = () => {
+    if (trailTimer !== null) { clearTimeout(trailTimer); trailTimer = null; }
+  };
 
   const setThumb = (dx, dy, animate) => {
     thumb.style.transition = animate ? "" : "none"; // "" → vuelve a la transición del CSS
@@ -377,6 +382,7 @@ function createStick(zone, stickId) {
     zone.classList.add("active");
     setThumb(0, 0, false);
     lastSend = 0;
+    cancelTrail(); // defensivo (un reset pudo soltar el pid sin pasar por end)
   });
 
   zone.addEventListener("pointermove", (e) => {
@@ -393,8 +399,22 @@ function createStick(zone, stickId) {
     const now = performance.now();
     if (now - lastSend >= STICK_THROTTLE_MS) {
       lastSend = now;
+      cancelTrail(); // cualquier valor pendiente queda superado por este
       // crudo [-1,1]: la deadzone/histéresis viven en el stick-engine del server
       send({ t: "stick", s: stickId, x: dx / STICK_RADIUS, y: dy / STICK_RADIUS });
+    } else {
+      // Trailing-edge: si este move descartado resulta ser el ÚLTIMO (el dedo
+      // se queda quieto), el server retendría un valor hasta 16ms viejo (puede
+      // quedar bajo el engage con el knob visualmente pasado). Se programa su
+      // emisión al expirar el throttle, cancelando la pendiente anterior.
+      const x = dx / STICK_RADIUS;
+      const y = dy / STICK_RADIUS;
+      cancelTrail();
+      trailTimer = setTimeout(() => {
+        trailTimer = null;
+        lastSend = performance.now();
+        send({ t: "stick", s: stickId, x, y });
+      }, STICK_THROTTLE_MS - (now - lastSend));
     }
   });
 
@@ -404,6 +424,7 @@ function createStick(zone, stickId) {
     pid = null;
     zone.classList.remove("active");
     setThumb(0, 0, true); // snap-back animado (cubic-bezier con micro-overshoot)
+    cancelTrail(); // que el trailing pendiente no pise el cero
     send({ t: "stick", s: stickId, x: 0, y: 0 }); // CERO inmediato, sin throttle
   };
   zone.addEventListener("pointerup", end);
@@ -412,6 +433,7 @@ function createStick(zone, stickId) {
   // Reset duro (reconexión): snap-back visual y se suelta el pointer activo
   // SIN mandar nada — el server ya soltó todo. El usuario re-presiona.
   controlResets.push(() => {
+    cancelTrail(); // un trailing pendiente mandaría un valor viejo al server limpio
     if (pid !== null) { claimed.delete(pid); pid = null; }
     zone.classList.remove("active");
     setThumb(0, 0, true);
