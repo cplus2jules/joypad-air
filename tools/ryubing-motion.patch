@@ -1,0 +1,169 @@
+--- a/src/Ryujinx.Common/Configuration/Hid/Keyboard/GenericKeyboardInputConfig.cs
++++ b/src/Ryujinx.Common/Configuration/Hid/Keyboard/GenericKeyboardInputConfig.cs
+@@ -1,3 +1,5 @@
++using Ryujinx.Common.Configuration.Hid.Controller.Motion;
++
+ namespace Ryujinx.Common.Configuration.Hid.Keyboard
+ {
+     public class GenericKeyboardInputConfig<TKey> : GenericInputConfigurationCommon<TKey> where TKey : unmanaged
+@@ -11,5 +13,11 @@
+         /// Right JoyCon Controller Stick Bindings
+         /// </summary>
+         public JoyconConfigKeyboardStick<TKey> RightJoyconStick { get; set; }
++
++        /// <summary>
++        /// Motion source (e.g. CemuHook DSU server) — lets keyboard-backed
++        /// pads use external gyro/accelerometer data
++        /// </summary>
++        public MotionConfigController Motion { get; set; }
+     }
+ }
+--- a/src/Ryujinx.Input/HLE/NpadController.cs
++++ b/src/Ryujinx.Input/HLE/NpadController.cs
+@@ -2,6 +2,7 @@
+ using Ryujinx.Common.Configuration.Hid;
+ using Ryujinx.Common.Configuration.Hid.Controller;
+ using Ryujinx.Common.Configuration.Hid.Controller.Motion;
++using Ryujinx.Common.Configuration.Hid.Keyboard;
+ using Ryujinx.Common.Logging;
+ using Ryujinx.HLE.HOS.Services.Hid;
+ using System;
+@@ -240,22 +241,38 @@
+             return _gamepad != null;
+         }
+ 
++        // Motion config lives on controller configs and (patched) keyboard
++        // configs — resolve both so CemuHook motion works with WindowKeyboard.
++        private static MotionConfigController GetMotionConfig(InputConfig config)
++        {
++            return config switch
++            {
++                StandardControllerInputConfig controllerConfig => controllerConfig.Motion,
++                StandardKeyboardInputConfig keyboardConfig => keyboardConfig.Motion,
++                _ => null,
++            };
++        }
++
+         public void UpdateUserConfiguration(InputConfig config)
+         {
+-            if (config is StandardControllerInputConfig controllerConfig)
++            MotionConfigController motionConfig = GetMotionConfig(config);
++
++            if (motionConfig != null)
+             {
+-                bool needsMotionInputUpdate = _config is not StandardControllerInputConfig oldControllerConfig ||
+-                    ((oldControllerConfig.Motion.EnableMotion != controllerConfig.Motion.EnableMotion) &&
+-                    (oldControllerConfig.Motion.MotionBackend != controllerConfig.Motion.MotionBackend));
++                MotionConfigController oldMotionConfig = GetMotionConfig(_config);
+ 
++                bool needsMotionInputUpdate = oldMotionConfig == null ||
++                    ((oldMotionConfig.EnableMotion != motionConfig.EnableMotion) &&
++                    (oldMotionConfig.MotionBackend != motionConfig.MotionBackend));
++
+                 if (needsMotionInputUpdate)
+                 {
+-                    UpdateMotionInput(controllerConfig.Motion);
++                    UpdateMotionInput(motionConfig);
+                 }
+             }
+             else
+             {
+-                // Non-controller doesn't have motions.
++                // Config without a motion section doesn't have motions.
+                 _leftMotionInput = null;
+             }
+ 
+@@ -287,9 +304,11 @@
+             {
+                 State = gamepad.GetMappedStateSnapshot();
+ 
+-                if (_config is StandardControllerInputConfig controllerConfig && controllerConfig.Motion.EnableMotion)
++                MotionConfigController motionConfig = GetMotionConfig(_config);
++
++                if (motionConfig != null && motionConfig.EnableMotion)
+                 {
+-                    if (controllerConfig.Motion.MotionBackend == MotionInputBackendType.GamepadDriver)
++                    if (motionConfig.MotionBackend == MotionInputBackendType.GamepadDriver)
+                     {
+                         if (gamepad.Features.HasFlag(GamepadFeaturesFlag.Motion))
+                         {
+@@ -299,9 +318,9 @@
+                             accelerometer = new Vector3(accelerometer.X, -accelerometer.Z, accelerometer.Y);
+                             gyroscope = new Vector3(gyroscope.X, -gyroscope.Z, gyroscope.Y);
+ 
+-                            _leftMotionInput.Update(accelerometer, gyroscope, (ulong)PerformanceCounter.ElapsedNanoseconds / 1000, controllerConfig.Motion.Sensitivity, (float)controllerConfig.Motion.GyroDeadzone);
++                            _leftMotionInput.Update(accelerometer, gyroscope, (ulong)PerformanceCounter.ElapsedNanoseconds / 1000, motionConfig.Sensitivity, (float)motionConfig.GyroDeadzone);
+ 
+-                            if (controllerConfig.ControllerType == ConfigControllerType.JoyconPair)
++                            if (_config.ControllerType == ConfigControllerType.JoyconPair)
+                             {
+                                 if (gamepad.Id == "JoyConPair")
+                                 {
+@@ -311,7 +330,7 @@
+                                     rightAccelerometer = new Vector3(rightAccelerometer.X, -rightAccelerometer.Z, rightAccelerometer.Y);
+                                     rightGyroscope = new Vector3(rightGyroscope.X, -rightGyroscope.Z, rightGyroscope.Y);
+ 
+-                                    _rightMotionInput.Update(rightAccelerometer, rightGyroscope, (ulong)PerformanceCounter.ElapsedNanoseconds / 1000, controllerConfig.Motion.Sensitivity, (float)controllerConfig.Motion.GyroDeadzone);
++                                    _rightMotionInput.Update(rightAccelerometer, rightGyroscope, (ulong)PerformanceCounter.ElapsedNanoseconds / 1000, motionConfig.Sensitivity, (float)motionConfig.GyroDeadzone);
+                                 }
+                                 else
+                                 {
+@@ -320,9 +339,9 @@
+                             }
+                         }
+                     }
+-                    else if (controllerConfig.Motion.MotionBackend == MotionInputBackendType.CemuHook && controllerConfig.Motion is CemuHookMotionConfigController cemuControllerConfig)
++                    else if (motionConfig.MotionBackend == MotionInputBackendType.CemuHook && motionConfig is CemuHookMotionConfigController cemuControllerConfig)
+                     {
+-                        int clientId = (int)controllerConfig.PlayerIndex;
++                        int clientId = (int)_config.PlayerIndex;
+ 
+                         // First of all ensure we are registered
+                         _cemuHookClient.RegisterClient(clientId, cemuControllerConfig.DsuServerHost, cemuControllerConfig.DsuServerPort);
+@@ -331,7 +350,7 @@
+                         _cemuHookClient.RequestData(clientId, cemuControllerConfig.Slot);
+                         _cemuHookClient.TryGetData(clientId, cemuControllerConfig.Slot, out _leftMotionInput);
+ 
+-                        if (controllerConfig.ControllerType == ConfigControllerType.JoyconPair)
++                        if (_config.ControllerType == ConfigControllerType.JoyconPair)
+                         {
+                             if (!cemuControllerConfig.MirrorInput)
+                             {
+--- a/src/Ryujinx.Input/Motion/CemuHook/Client.cs
++++ b/src/Ryujinx.Input/Motion/CemuHook/Client.cs
+@@ -3,6 +3,7 @@
+ using Ryujinx.Common.Configuration.Hid;
+ using Ryujinx.Common.Configuration.Hid.Controller;
+ using Ryujinx.Common.Configuration.Hid.Controller.Motion;
++using Ryujinx.Common.Configuration.Hid.Keyboard;
+ using Ryujinx.Common.Logging;
+ using Ryujinx.Common.Memory;
+ using Ryujinx.Input.HLE;
+@@ -328,14 +329,23 @@
+                     ulong timestamp = inputData.MotionTimestamp;
+ 
+                     InputConfig config = _npadManager.GetPlayerInputConfigByIndex(clientId);
++
++                    // Motion config lives on controller configs and (patched)
++                    // keyboard configs — accept both backends here.
++                    MotionConfigController motionConfig = config switch
++                    {
++                        StandardControllerInputConfig controllerConfig => controllerConfig.Motion,
++                        StandardKeyboardInputConfig keyboardConfig => keyboardConfig.Motion,
++                        _ => null,
++                    };
+ 
+                     lock (_motionData)
+                     {
+                         // Sanity check the configuration state and remove client if needed if needed.
+-                        if (config is StandardControllerInputConfig controllerConfig &&
+-                            controllerConfig.Motion.EnableMotion &&
+-                            controllerConfig.Motion.MotionBackend == MotionInputBackendType.CemuHook &&
+-                            controllerConfig.Motion is CemuHookMotionConfigController cemuHookConfig)
++                        if (motionConfig != null &&
++                            motionConfig.EnableMotion &&
++                            motionConfig.MotionBackend == MotionInputBackendType.CemuHook &&
++                            motionConfig is CemuHookMotionConfigController cemuHookConfig)
+                         {
+                             int slot = inputData.Shared.Slot;
+ 
