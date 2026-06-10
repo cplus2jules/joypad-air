@@ -19,6 +19,8 @@ import { haptic, depth } from './src/haptics';
 import RecessedBtn from './src/components/RecessedBtn';
 import { SymbolBtn, CaptureBtn, HomeBtn } from './src/components/SymbolButtons';
 import Stick from './src/components/Stick';
+import DPad from './src/components/DPad';
+import FaceButtons from './src/components/FaceButtons';
 
 const SERVER_PORT = 3001;
 
@@ -591,53 +593,6 @@ function RightJoycon({ send, compact }) {
   );
 }
 
-// ── D-Pad (4 separate round buttons like real Joy-Con) ─
-function DPad({ send }) {
-  return (
-    <View style={s.dpad}>
-      <View style={[s.dpadSlot, s.dpadUp]}>
-        <RecessedBtn name="dpad_up"    label="▲" send={send} h="select" style={s.dpadBtn} textStyle={s.dpadText} />
-      </View>
-      <View style={[s.dpadSlot, s.dpadLeft]}>
-        <RecessedBtn name="dpad_left"  label="◀" send={send} h="select" style={s.dpadBtn} textStyle={s.dpadText} />
-      </View>
-      <View style={[s.dpadSlot, s.dpadRight]}>
-        <RecessedBtn name="dpad_right" label="▶" send={send} h="select" style={s.dpadBtn} textStyle={s.dpadText} />
-      </View>
-      <View style={[s.dpadSlot, s.dpadDown]}>
-        <RecessedBtn name="dpad_down"  label="▼" send={send} h="select" style={s.dpadBtn} textStyle={s.dpadText} />
-      </View>
-    </View>
-  );
-}
-
-// ── Face buttons (X up, Y left, A right, B down) ────────
-function FaceButtons({ send, big }) {
-  const wrap = big ? s.faceBig : s.face;
-  const btnStyle = big ? s.faceBtnBig : s.faceBtn;
-  const txtStyle = big ? s.faceTextBig : s.faceText;
-  const slot = big ? s.faceSlotBig : s.faceSlot;
-  const pos = big
-    ? { X: s.faceXBig, Y: s.faceYBig, A: s.faceABig, B: s.faceBBig }
-    : { X: s.faceX,   Y: s.faceY,   A: s.faceA,   B: s.faceB   };
-  return (
-    <View style={wrap}>
-      <View style={[slot, pos.X]}>
-        <RecessedBtn name="x" label="X" send={send} style={btnStyle} textStyle={txtStyle} />
-      </View>
-      <View style={[slot, pos.Y]}>
-        <RecessedBtn name="y" label="Y" send={send} style={btnStyle} textStyle={txtStyle} />
-      </View>
-      <View style={[slot, pos.A]}>
-        <RecessedBtn name="a" label="A" send={send} style={btnStyle} textStyle={txtStyle} />
-      </View>
-      <View style={[slot, pos.B]}>
-        <RecessedBtn name="b" label="B" send={send} style={btnStyle} textStyle={txtStyle} />
-      </View>
-    </View>
-  );
-}
-
 // ── Styles ──────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
@@ -988,35 +943,6 @@ const s = StyleSheet.create({
     position: 'absolute', top: 16, left: 0, right: 0,
     alignItems: 'center',
   },
-
-  // D-Pad — tamaño que calza con stick en vertical
-  dpad: { width: 150, height: 150 },
-  dpadSlot: { position: 'absolute', width: 50, height: 50 },
-  dpadBtn: { width: 50, height: 50, borderRadius: 25 },
-  dpadText: { fontSize: 15, color: '#cfd2da' },
-  dpadUp:    { top: 0,    left: 50 },
-  dpadDown:  { bottom: 0, left: 50 },
-  dpadLeft:  { left: 0,   top: 50 },
-  dpadRight: { right: 0,  top: 50 },
-
-  // ABXY — tamaño que calza con stick
-  face: { width: 150, height: 150 },
-  faceSlot: { position: 'absolute', width: 50, height: 50 },
-  faceBtn:  { width: 50, height: 50, borderRadius: 25 },
-  faceText: { fontSize: 18, color: '#fff', fontWeight: '700' },
-  faceX: { top: 0,    left: 50 },
-  faceY: { top: 50,   left: 0  },
-  faceA: { top: 50,   right: 0 },
-  faceB: { bottom: 0, left: 50 },
-  // ABXY BIG — modo compact, gigantes
-  faceBig: { width: 260, height: 260 },
-  faceSlotBig: { position: 'absolute', width: 86, height: 86 },
-  faceBtnBig:  { width: 86, height: 86, borderRadius: 43 },
-  faceTextBig: { fontSize: 30, color: '#fff', fontWeight: '700' },
-  faceXBig: { top: 0,    left: 87 },
-  faceYBig: { top: 87,   left: 0  },
-  faceABig: { top: 87,   right: 0 },
-  faceBBig: { bottom: 0, left: 87 },
 
   // ── Sideways (single Joy-Con full screen) ───────────
   sideways: {
