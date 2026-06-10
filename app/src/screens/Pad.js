@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useBatteryLevel } from 'expo-battery';
 import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
 import { haptic, setIntensity } from '../haptics';
 import { setClickEnabled } from '../sound';
@@ -101,6 +102,8 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
   const theme = useMemo(() => resolveTheme(profile.themeId), [profile.themeId]);
   const { status, send, rtt, serverInfo } = useConnection(player, profile);
   const host = useMemo(() => detectHost(), []);
+  const battery = useBatteryLevel(); // 0..1, o -1 mientras no hay dato
+  const batteryLow = battery >= 0 && battery < 0.2;
 
   // Aviso accionable del server (prioridad: accesibilidad > foco).
   // Solo con hello recibido y conectado — sin socket manda el overlay
@@ -158,6 +161,9 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
           {status}
         </Text>
         <LatencyDot rtt={rtt} />
+        {batteryLow && (
+          <Text style={s.batteryLow}>🪫 {Math.round(battery * 100)}%</Text>
+        )}
         <Pressable
           onPress={() => { haptic.light(); onToggleCompact(); }}
           style={s.compactToggle}
@@ -422,6 +428,12 @@ const s = StyleSheet.create({
   latencyText: {
     color: C.inkDim,
     fontSize: 9,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  batteryLow: {
+    color: AMBER,
+    fontSize: 10,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },

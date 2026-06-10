@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useBatteryLevel } from 'expo-battery';
 import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
 import { haptic, depth } from '../haptics';
 import { detectHost, SERVER_PORT } from '../net/connection';
@@ -200,6 +201,7 @@ function PlayerCard({ player, onPick }) {
 // ── Picker ──────────────────────────────────────────────
 export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
   const host = detectHost();
+  const battery = useBatteryLevel(); // 0..1, o -1 mientras no hay dato
   const fade1 = useRef(new Animated.Value(0)).current;
   const fade2 = useRef(new Animated.Value(0)).current;
   const fade3 = useRef(new Animated.Value(0)).current;
@@ -249,6 +251,9 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
               {host ? `${host}:${SERVER_PORT}` : 'sin Mac'}
             </Text>
           </View>
+          <Text style={s.batteryText}>
+            🔋 {battery >= 0 ? `${Math.round(battery * 100)}%` : '—'}
+          </Text>
           <Animated.Text style={[s.footerLeft, { opacity: fade4 }]}>
             Conecta el segundo iPhone para co-op local
           </Animated.Text>
@@ -385,6 +390,12 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  batteryText: {
+    color: C.inkDim,
+    fontSize: 11,
+    marginTop: 6,
+    fontVariant: ['tabular-nums'],
   },
   modeBlock: {},
   proSectionLabel: {
