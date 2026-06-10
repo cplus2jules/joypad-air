@@ -239,7 +239,7 @@ const logSince = (mark) => serverLog.slice(mark);
   await sleep(150);
   const res = await fetch(`http://127.0.0.1:${PORT}/status`);
   const st = await res.json();
-  check("/status responde JSON con firma", st.app === "switch-controller" && st.v === 1);
+  check("/status responde JSON con firma", st.app === "joypad-air" && st.v === 1 && typeof st.version === "string");
   check("/status player 2 conectado", st.players?.["2"]?.connected === true);
   check("/status player 1 libre", st.players?.["1"]?.connected === false);
   // 3 inválidos: JSON roto, botón inexistente, stick s:"Z". El 4º (x:Infinity)
@@ -252,7 +252,7 @@ const logSince = (mark) => serverLog.slice(mark);
 // ── 4. DSU: motion iPhone → protocolo CemuHook ──────────────────────────────
 console.log("\n[4] DSU: ws motion → data responses con transformación de ejes");
 {
-  const { ws } = await connect(1);
+  const { ws, msgs } = await connect(1);
   await sleep(100);
 
   const dsuPort = 26760; // el server de test lo abre en el default (loopback)
@@ -308,9 +308,74 @@ console.log("\n[4] DSU: ws motion → data responses con transformación de ejes
   const st = await (await fetch(`http://127.0.0.1:${PORT}/status`)).json();
   check("/status dsu con slot 0 activo", st.dsu?.listening === true && st.dsu?.slots?.["0"] != null);
 
+  // ── Regresiones de la revisión adversarial ──
+  // (a) reset del reloj del sensor (reconexión de la app) → la línea
+  //     publicada avanza un frame nominal, no retrocede horas
+  responses.length = 0;
+  udp.send(encodeDataRequest(0, 0));
+  ws.send(JSON.stringify({ t: "motion", ax: 0, ay: 0, az: -1, gx: 0, gy: 0, gz: 0, ts: 1000 }));
+  await sleep(200);
+  const afterReset = responses.filter((r) => r.type === MSG.DATA).at(-1);
+  check(
+    `reset del ts → publicado = anterior + 16666 (got ${afterReset?.tsUs})`,
+    !!afterReset && afterReset.tsUs === BigInt(ts + 16666)
+  );
+
+  // (b) GIRO off → sample final con gyro a CERO + slot Disconnected
+  responses.length = 0;
+  udp.send(encodeDataRequest(0, 0));
+  ws.send(JSON.stringify({ t: "config", motion: false }));
+  await sleep(200);
+  const still = responses.filter((r) => r.type === MSG.DATA).at(-1);
+  check("GIRO off → sample final con gyro 0", !!still && still.pitch === 0 && still.yaw === 0 && still.roll === 0);
+  udp.send(encodeInfoRequest(0, [0]));
+  await sleep(200);
+  const infoAfter = responses.filter((r) => r.type === MSG.INFO).at(-1);
+  check("GIRO off → slot 0 Disconnected", infoAfter?.state === 0);
+
+  // (c) DoS: un motion con ts ≥ 2^64 se descarta y el server SIGUE VIVO
+  ws.send(JSON.stringify({ t: "motion", ax: 0, ay: 0, az: -1, gx: 0, gy: 0, gz: 0, ts: 1e20 }));
+  await sleep(100);
+  msgs.length = 0;
+  ws.send(JSON.stringify({ t: "ping", ts: 777 }));
+  await sleep(200);
+  check("motion con ts=1e20 no tumba el server (pong posterior OK)", msgs.some((m) => m.t === "pong" && m.ts === 777));
+
+  // (d) bypass por prototipo: k heredado de Object.prototype se rechaza
+  const stBefore = await (await fetch(`http://127.0.0.1:${PORT}/status`)).json();
+  ws.send(JSON.stringify({ t: "btn", k: "toString", d: true }));
+  ws.send(JSON.stringify({ t: "btn", k: "__proto__", d: true }));
+  await sleep(200);
+  const stAfter = await (await fetch(`http://127.0.0.1:${PORT}/status`)).json();
+  check("btn k='toString'/'__proto__' rechazados (invalidMsgs sube)", stAfter.invalidMsgs >= stBefore.invalidMsgs + 2);
+  check("sin botones basura retenidos", (stAfter.players?.["1"]?.heldButtons ?? []).length === 0);
+
   udp.close();
   ws.close();
   await sleep(200);
+}
+
+// ── 5. Fallback de puerto ───────────────────────────────────────────────────
+console.log("\n[5] fallback de puerto: segunda instancia no crashea");
+{
+  let log2 = "";
+  const proc2 = spawn("node", ["server/index.js"], {
+    cwd: ROOT,
+    env: { ...process.env, FORCE_LOG: "1", PORT: String(PORT), DSU_PORT: "26798" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  proc2.stdout.on("data", (d) => { log2 += d.toString(); });
+  proc2.stderr.on("data", (d) => { log2 += d.toString(); });
+  for (let i = 0; i < 50 && !log2.includes("servidor corriendo"); i++) await sleep(100);
+  check("segunda instancia arranca (no EADDRINUSE fatal)", log2.includes("servidor corriendo"));
+  check("avisa del puerto ocupado", log2.includes("ocupado"));
+  let st2 = null;
+  try {
+    st2 = await (await fetch(`http://127.0.0.1:${PORT + 1}/status`)).json();
+  } catch { /* sin fallback */ }
+  check(`escucha en ${PORT + 1} con firma joypad-air`, st2?.app === "joypad-air" && st2?.port === PORT + 1);
+  proc2.kill("SIGTERM");
+  await sleep(300);
 }
 
 proc.kill("SIGTERM");

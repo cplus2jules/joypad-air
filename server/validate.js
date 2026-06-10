@@ -14,7 +14,9 @@ export function validateMessage(msg, map) {
 
   switch (msg.t) {
     case "btn": {
-      if (typeof msg.k !== "string" || !(msg.k in map.buttons)) return null;
+      // Object.hasOwn (no `in`): el operador `in` recorre la cadena de
+      // prototipos y dejaría pasar k="toString"/"constructor"/"__proto__"
+      if (typeof msg.k !== "string" || !Object.hasOwn(map.buttons, msg.k)) return null;
       return { t: "btn", k: msg.k, d: !!msg.d };
     }
 
@@ -28,7 +30,7 @@ export function validateMessage(msg, map) {
 
     case "ping": {
       const ts = num(msg.ts);
-      if (ts === null) return null;
+      if (ts === null || Math.abs(ts) > Number.MAX_SAFE_INTEGER) return null;
       const out = { t: "ping", ts };
       const rtt = num(msg.rtt);
       if (rtt !== null && rtt >= 0) out.rtt = Math.round(clamp(rtt, 0, 60000));
@@ -58,8 +60,12 @@ export function validateMessage(msg, map) {
       // gyro en grados/segundo, accel en g, ts en microsegundos (monotónico del sensor)
       const gx = num(msg.gx), gy = num(msg.gy), gz = num(msg.gz);
       const ax = num(msg.ax), ay = num(msg.ay), az = num(msg.az);
+      // Tope superior del ts OBLIGATORIO: sin él, un ts ≥ 2^64 llega a
+      // writeBigUInt64LE en el encoder DSU y el RangeError tumba el proceso.
       const ts = num(msg.ts);
-      if ([gx, gy, gz, ax, ay, az].some((v) => v === null) || ts === null || ts < 0) return null;
+      if ([gx, gy, gz, ax, ay, az].some((v) => v === null) || ts === null || ts < 0 || ts > Number.MAX_SAFE_INTEGER) {
+        return null;
+      }
       return {
         t: "motion",
         gx: clamp(gx, -2000, 2000),

@@ -107,7 +107,10 @@ export function encodeDataResponse(serverId, slot, packetId, sample) {
     buf.writeUInt32LE(0, o); o += 4;                   // dpad analógico
     buf.writeBigUInt64LE(0n, o); o += 8;               // botones analógicos
     buf.fill(0, o, o + 12); o += 12;                   // touch1 + touch2
-    buf.writeBigUInt64LE(BigInt(Math.round(Number(sample.tsUs))), o); o += 8;
+    // Clamp defensivo: un ts fuera de [0, 2^64) haría throw a writeBigUInt64LE
+    // y tumbaría el proceso (validate.js ya lo acota, esto es el cinturón).
+    const tsUs = Math.min(Math.max(0, Math.round(Number(sample.tsUs) || 0)), Number.MAX_SAFE_INTEGER);
+    buf.writeBigUInt64LE(BigInt(tsUs), o); o += 8;
     buf.writeFloatLE(sample.ax, o); o += 4;
     buf.writeFloatLE(sample.ay, o); o += 4;
     buf.writeFloatLE(sample.az, o); o += 4;

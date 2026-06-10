@@ -24,7 +24,19 @@ import {
 import { toDsuFrame } from "./transform.js";
 
 const SUBSCRIBER_TTL_MS = 2000; // Ryujinx re-pide cada frame; 2s sin pedir = fuera
+const SUBSCRIBER_PURGE_MS = 10000;
+const MAX_SUBSCRIBERS = 32;
 const NUM_SLOTS = 4;
+
+// Re-base de la línea de tiempo: performance.now() del teléfono arranca en
+// ~0 en cada relanzamiento de la app/recarga de la PWA. El emulador integra
+// deltaTime entre samples — un salto hacia atrás (o un hueco enorme tras una
+// suspensión) produciría un deltaTime de horas y un latigazo de orientación.
+// Publicamos nuestra propia línea monotónica por slot: deltas crudos
+// razonables pasan tal cual; resets y huecos se sustituyen por un frame
+// nominal.
+const NOMINAL_DELTA_US = 16666;
+const MAX_DELTA_US = 500000; // 0.5s
 
 export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
   // id de servidor estable durante el proceso (los clientes lo ignoran)
@@ -36,8 +48,32 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
   let listening = false;
 
   function slotState(n) {
-    if (!slots.has(n)) slots.set(n, { packetId: 0, hzCount: 0, hz: 0, lastSample: null });
+    if (!slots.has(n)) {
+      slots.set(n, { packetId: 0, hzCount: 0, hz: 0, lastSample: null, lastRawTs: null, pubTs: 0 });
+    }
     return slots.get(n);
+  }
+
+  // Línea de tiempo publicada (monotónica) a partir del ts crudo del sensor.
+  function rebaseTs(s, rawTs) {
+    if (s.lastRawTs === null) {
+      s.pubTs = rawTs;
+    } else {
+      const delta = rawTs - s.lastRawTs;
+      s.pubTs += delta > 0 && delta <= MAX_DELTA_US ? delta : NOMINAL_DELTA_US;
+    }
+    s.lastRawTs = rawTs;
+    return s.pubTs;
+  }
+
+  function sendToSubscribers(slot, data) {
+    const now = Date.now();
+    for (const sub of subscribers.values()) {
+      if (now - sub.lastSeen > SUBSCRIBER_TTL_MS) continue;
+      if (sub.all || sub.slots.has(slot)) {
+        socket.send(data, sub.port, sub.addr);
+      }
+    }
   }
 
   socket.on("message", (buf, rinfo) => {
@@ -62,6 +98,19 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
       const key = `${rinfo.address}:${rinfo.port}`;
       let sub = subscribers.get(key);
       if (!sub) {
+        // Tope defensivo: cada relanzamiento del emulador usa un puerto
+        // efímero nuevo — sin límite, el Map crecería sin fin.
+        if (subscribers.size >= MAX_SUBSCRIBERS) {
+          let oldestKey = null;
+          let oldestSeen = Infinity;
+          for (const [k, s] of subscribers) {
+            if (s.lastSeen < oldestSeen) {
+              oldestSeen = s.lastSeen;
+              oldestKey = k;
+            }
+          }
+          if (oldestKey) subscribers.delete(oldestKey);
+        }
         sub = { addr: rinfo.address, port: rinfo.port, slots: new Set(), all: false, lastSeen: 0 };
         subscribers.set(key, sub);
         console.log(`[dsu] suscriptor nuevo: ${key} (slot ${req.subscriberType === 0 ? "ALL" : req.slot})`);
@@ -82,11 +131,17 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
     console.log(`[dsu] servidor motion DSU/CemuHook en ${host}:${port}`);
   });
 
-  // hz por slot (ventana de 2s)
+  // hz por slot (ventana de 2s) + purga de suscriptores muertos (antes la
+  // purga solo corría dentro de updateSlot: sin motion fluyendo, cada
+  // relanzamiento del emulador dejaba una entrada huérfana para siempre)
   const hzTick = setInterval(() => {
     for (const s of slots.values()) {
       s.hz = Math.round(s.hzCount / 2);
       s.hzCount = 0;
+    }
+    const now = Date.now();
+    for (const [key, sub] of subscribers) {
+      if (now - sub.lastSeen > SUBSCRIBER_PURGE_MS) subscribers.delete(key);
     }
   }, 2000);
   hzTick.unref?.();
@@ -97,27 +152,34 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
       if (slot < 0 || slot >= NUM_SLOTS) return;
       const s = slotState(slot);
       const dsuSample = toDsuFrame(sample, orientation);
+      dsuSample.tsUs = rebaseTs(s, dsuSample.tsUs);
       s.lastSample = dsuSample;
       s.hzCount++;
       s.packetId = (s.packetId + 1) >>> 0;
 
-      const now = Date.now();
-      const data = encodeDataResponse(serverId, slot, s.packetId, dsuSample);
-      for (const [key, sub] of subscribers) {
-        if (now - sub.lastSeen > SUBSCRIBER_TTL_MS) {
-          if (now - sub.lastSeen > 10000) subscribers.delete(key);
-          continue;
-        }
-        if (sub.all || sub.slots.has(slot)) {
-          socket.send(data, sub.port, sub.addr);
-        }
-      }
+      sendToSubscribers(slot, encodeDataResponse(serverId, slot, s.packetId, dsuSample));
     },
 
-    // player desconectado → su slot deja de reportar Connected en Info
+    // GIRO apagado o player desconectado: publicar un último sample con el
+    // gyro a CERO (el emulador integra el último valor recibido — sin esto
+    // un gyro congelado ≠ 0 deja la cámara girando sola) y soltar el slot.
+    quiesceSlot(slot) {
+      const s = slots.get(slot);
+      if (!s || !s.lastSample) return;
+      const still = { ...s.lastSample, pitch: 0, yaw: 0, roll: 0, tsUs: s.pubTs + NOMINAL_DELTA_US };
+      s.packetId = (s.packetId + 1) >>> 0;
+      sendToSubscribers(slot, encodeDataResponse(serverId, slot, s.packetId, still));
+      s.lastSample = null;
+      s.lastRawTs = null;
+    },
+
+    // alias para compatibilidad (mismo efecto sin el sample de reposo)
     clearSlot(slot) {
       const s = slots.get(slot);
-      if (s) s.lastSample = null;
+      if (s) {
+        s.lastSample = null;
+        s.lastRawTs = null;
+      }
     },
 
     status() {

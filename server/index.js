@@ -3,6 +3,7 @@ import { WebSocketServer } from "ws";
 import { createServer } from "http";
 import { networkInterfaces } from "os";
 import { execFile } from "child_process";
+import { readFileSync } from "fs";
 import qrcode from "qrcode-terminal";
 import QRCode from "qrcode";
 import { fileURLToPath } from "url";
@@ -18,13 +19,26 @@ import { checkAccessibility, accessibilityStatus, printAccessibilityHelp, reques
 import { createDsuServer } from "./dsu/server.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT) || 3001;
+const BASE_PORT = Number(process.env.PORT) || 3001;
+let activePort = BASE_PORT; // puede subir si el puerto está ocupado (fallback)
+let shuttingDown = false;
+
+const VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf8")).version;
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 const app = express();
 app.use(express.static(join(__dirname, "..", "public")));
 
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
+// ws re-emite los errores del http server en el WSS; sin listener serían un
+// throw fatal ANTES de que el fallback de puerto (server.on('error')) actúe
+wss.on("error", () => {});
 
 const keyboard = await createKeyboard();
 console.log(`[server] keyboard backend: ${keyboard.name}`);
@@ -100,7 +114,7 @@ const OPPOSITES = {
 function handleButton(p, btnName, isDown) {
   const map = MAPPINGS[p.num];
   const key = map.buttons[btnName];
-  if (!key) return;
+  if (!key || typeof key !== "string") return;
 
   const has = p.buttons.has(btnName);
   if (isDown && !has) {
@@ -146,7 +160,13 @@ function applyConfig(p, msg) {
   }
   if (msg.theme) p.theme = msg.theme;
   if (msg.orientation) p.orientation = msg.orientation;
-  if (msg.motion !== undefined) p.motion = msg.motion;
+  if (msg.motion !== undefined) {
+    p.motion = msg.motion;
+    // GIRO apagado → publicar un último sample con gyro a cero y soltar el
+    // slot; si no, el emulador queda integrando el último gyro congelado
+    // (drift continuo de cámara) y el slot reporta Connected para siempre.
+    if (msg.motion === false) dsu?.quiesceSlot(p.num - 1);
+  }
   if (msg.engage !== undefined || msg.release !== undefined || msg.angularHysteresis !== undefined) {
     p.stickEngines.L.configure(msg);
     p.stickEngines.R.configure(msg);
@@ -227,6 +247,10 @@ wss.on("connection", (socket, req) => {
   });
 
   socket.on("message", (raw) => {
+    // Mismo guard de identidad que close/error: tras un takeover, ws sigue
+    // emitiendo los frames bufferados del socket VIEJO — sin esto mutarían
+    // el estado del cliente nuevo (tecla pegada que nadie suelta).
+    if (p.socket !== socket || shuttingDown) return;
     if (!allowed()) {
       console.warn(`[ws] ${displayName(p)} supera el rate limit — cerrando`);
       socket.close(1008, "rate limit");
@@ -246,24 +270,31 @@ wss.on("connection", (socket, req) => {
     }
     p.msgCount++;
 
-    switch (msg.t) {
-      case "btn":
-        handleButton(p, msg.k, msg.d);
-        break;
-      case "stick":
-        handleStick(p, msg.s, msg.x, msg.y);
-        break;
-      case "ping":
-        if (msg.rtt !== undefined) p.rttMs = msg.rtt;
-        send(socket, { t: "pong", ts: msg.ts });
-        break;
-      case "config":
-        applyConfig(p, msg);
-        break;
-      case "motion":
-        p.motion = true;
-        dsu?.updateSlot(p.num - 1, msg, p.orientation);
-        break;
+    // Ningún mensaje individual puede tumbar el proceso (la garantía que
+    // promete validate.js — esto es la defensa en profundidad).
+    try {
+      switch (msg.t) {
+        case "btn":
+          handleButton(p, msg.k, msg.d);
+          break;
+        case "stick":
+          handleStick(p, msg.s, msg.x, msg.y);
+          break;
+        case "ping":
+          if (msg.rtt !== undefined) p.rttMs = msg.rtt;
+          send(socket, { t: "pong", ts: msg.ts });
+          break;
+        case "config":
+          applyConfig(p, msg);
+          break;
+        case "motion":
+          p.motion = true;
+          dsu?.updateSlot(p.num - 1, msg, p.orientation);
+          break;
+      }
+    } catch (e) {
+      invalidMsgs++;
+      console.error(`[ws] error procesando '${msg.t}' de ${displayName(p)}:`, e.message);
     }
   });
 
@@ -275,7 +306,7 @@ wss.on("connection", (socket, req) => {
     p.socket = null;
     p.rttMs = null;
     p.motion = false;
-    dsu?.clearSlot(p.num - 1);
+    dsu?.quiesceSlot(p.num - 1);
     broadcastSlots();
   });
 
@@ -318,7 +349,7 @@ app.get("/qr.png", async (_req, res) => {
   const ip = getLocalIPs()[0];
   if (!ip) return res.status(404).end();
   try {
-    const png = await QRCode.toBuffer(`http://${ip}:${PORT}`, {
+    const png = await QRCode.toBuffer(`http://${ip}:${activePort}`, {
       width: 400,
       margin: 1,
       color: { dark: "#0b0d12", light: "#ffffff" },
@@ -329,13 +360,38 @@ app.get("/qr.png", async (_req, res) => {
   }
 });
 
+// ── Chequeo de sincronización con Ryujinx ───────────────────────────────────
+// Reutiliza el tooling (--check, exit 0 = sincronizado). Cacheado: al boot y
+// bajo demanda con /status?refresh=1.
+let ryujinxState = { found: null, synced: null };
+
+function checkRyujinx() {
+  return new Promise((resolve) => {
+    const tool = join(__dirname, "..", "tools", "ryujinx-setup.mjs");
+    execFile(process.execPath, [tool, "--check"], { timeout: 5000 }, (err, _out, stderr) => {
+      if (stderr.includes("No existe") || /no existe .*Config\.json/i.test(_out + stderr)) {
+        ryujinxState = { found: false, synced: false };
+      } else {
+        ryujinxState = { found: true, synced: !err };
+      }
+      resolve(ryujinxState);
+    });
+  });
+}
+checkRyujinx();
+
 // ── Estado ──────────────────────────────────────────────────────────────────
 app.get("/status", async (req, res) => {
-  if (req.query.refresh === "1") await checkAccessibility();
+  if (req.query.refresh === "1") {
+    await Promise.all([checkAccessibility(), checkRyujinx()]);
+  }
   res.set("Access-Control-Allow-Origin", "*");
   res.json({
-    app: "switch-controller",
+    app: "joypad-air",
     v: 1,
+    version: VERSION,
+    port: activePort,
+    ryujinx: ryujinxState,
     backend: keyboard.name,
     native: keyboard.isNative,
     accessibility: accessibilityStatus(),
@@ -398,17 +454,32 @@ if (needsOnboarding) {
   poll.unref?.();
 }
 
-server.listen(PORT, "0.0.0.0", () => {
+// Fallback de puerto: doble click dos veces en el launcher (o una instancia
+// vieja viva) no debe terminar en un stack trace críptico de EADDRINUSE.
+let listenTries = 0;
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE" && listenTries < 5) {
+    listenTries++;
+    console.warn(`[server] puerto ${activePort} ocupado (¿otra instancia corriendo?) — probando ${activePort + 1}`);
+    activePort++;
+    setTimeout(() => server.listen(activePort, "0.0.0.0"), 100);
+    return;
+  }
+  console.error(`[server] no pude abrir el puerto ${activePort}: ${err.message}`);
+  process.exit(1);
+});
+
+server.on("listening", () => {
   const ips = getLocalIPs();
   console.log("");
   console.log("El Control Super Pro Max — servidor corriendo");
   console.log("=============================================");
   if (ips.length === 0) {
-    console.log(`Servidor en http://localhost:${PORT}`);
+    console.log(`Servidor en http://localhost:${activePort}`);
     console.log("(no se detectaron interfaces de red — conecta el Mac a WiFi)");
   } else {
     for (const ip of ips) {
-      const url = `http://${ip}:${PORT}`;
+      const url = `http://${ip}:${activePort}`;
       console.log("");
       console.log(`Abre esta URL en el iPhone:  ${url}`);
       qrcode.generate(url, { small: true });
@@ -420,21 +491,26 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log("  2. Compartir -> Agregar a pantalla de inicio");
   console.log("  3. Abre la app desde el icono, elige Player 1 o Player 2");
   console.log("");
-  console.log(`Panel de estado: http://localhost:${PORT}/setup`);
+  console.log(`Panel de estado: http://localhost:${activePort}/setup`);
   console.log("Mapeo de teclas para Ryujinx: npm run ryujinx:setup (ver README.md)");
   console.log("Ctrl+C para detener");
 
   // Si falta el permiso de Accesibilidad, abrir el panel guiado en el
   // navegador (solo entonces — en el uso diario no estorba).
   if (needsOnboarding) {
-    execFile("open", [`http://localhost:${PORT}/setup`]);
+    execFile("open", [`http://localhost:${activePort}/setup`]);
   }
 });
 
+server.listen(activePort, "0.0.0.0");
+
 async function shutdown() {
   console.log("\nLiberando teclas y cerrando...");
+  // Dejar de procesar mensajes nuevos para que la cola pueda drenar los
+  // releases (bajo inundación, los 'up' finales quedan detrás del backlog).
+  shuttingDown = true;
   for (const p of Object.values(players)) releaseAllForPlayer(p);
-  await Promise.race([queue.flush(), new Promise((r) => setTimeout(r, 500))]);
+  await Promise.race([queue.flush(), new Promise((r) => setTimeout(r, 1500))]);
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

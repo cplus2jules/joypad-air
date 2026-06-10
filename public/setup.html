@@ -86,6 +86,11 @@
         <div class="hint" id="h-focus" hidden>
           Las teclas viajan a la app con foco: haz click en la ventana de Ryujinx antes de jugar.
         </div>
+        <div class="row"><span class="dot off" id="d-ryu"></span><span id="t-ryu">Comprobando Ryujinx…</span></div>
+        <div class="hint" id="h-ryu" hidden>
+          Corre <b>npm run ryujinx:setup</b> en la carpeta del proyecto (con
+          Ryujinx cerrado) para configurar los mandos automáticamente.
+        </div>
         <div class="row"><span class="dot off" id="d-dsu"></span><span id="t-dsu">Motion (DSU)…</span></div>
       </div>
 
@@ -114,7 +119,7 @@
       </div>
     </div>
 
-    <footer>Ryujinx ya quedó configurado con <code>npm run ryujinx:setup</code> · estado crudo en <a href="/status" style="color:var(--blue)">/status</a></footer>
+    <footer><span id="t-version"></span>estado crudo en <a href="/status" style="color:var(--blue)">/status</a></footer>
   </div>
 
   <script>
@@ -142,6 +147,18 @@
       if (st.ryujinxFocused === true) { dot("d-focus", "ok"); $("t-focus").textContent = "Ryujinx tiene el foco"; $("h-focus").hidden = true; }
       else if (st.ryujinxFocused === false) { dot("d-focus", "warn"); $("t-focus").textContent = "Al frente: " + (st.focusApp || "otra app"); $("h-focus").hidden = false; }
       else { dot("d-focus", "off"); $("t-focus").textContent = "Foco: esperando jugadores"; $("h-focus").hidden = true; }
+
+      if (st.version) $("t-version").textContent = `joypad-air v${st.version} · `;
+
+      if (st.ryujinx?.found === false) {
+        dot("d-ryu", "warn"); $("t-ryu").textContent = "Ryujinx no detectado (¿está instalado?)"; $("h-ryu").hidden = true;
+      } else if (st.ryujinx?.synced === true) {
+        dot("d-ryu", "ok"); $("t-ryu").textContent = "Ryujinx configurado (mandos sincronizados)"; $("h-ryu").hidden = true;
+      } else if (st.ryujinx?.synced === false) {
+        dot("d-ryu", "err"); $("t-ryu").textContent = "Ryujinx SIN configurar"; $("h-ryu").hidden = false;
+      } else {
+        dot("d-ryu", "off"); $("t-ryu").textContent = "Ryujinx: comprobando…";
+      }
 
       const dsuSlots = st.dsu && st.dsu.slots ? Object.values(st.dsu.slots).filter(Boolean) : [];
       if (st.dsu && st.dsu.listening) {
