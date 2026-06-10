@@ -1,9 +1,24 @@
 {
-  "name": "switch-controller",
-  "version": "1.0.0",
-  "description": "Convierte 2 iPhones en mandos para Ryujinx en Mac",
-  "private": true,
+  "name": "joypad-air",
+  "version": "2.0.0",
+  "description": "Turn your iPhone into a gamepad for Ryujinx, Dolphin & Cemu on macOS — DSU (cemuhook) motion + low-latency buttons over Wi-Fi. A.K.A. \"El Control Super Pro Max\"",
+  "license": "MIT",
   "type": "module",
+  "bin": {
+    "joypad-air": "server/cli.js"
+  },
+  "files": [
+    "server/",
+    "public/",
+    "tools/",
+    "install.sh",
+    "README.md",
+    "README.es.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
@@ -13,13 +28,25 @@
     "ryujinx:sideways": "node tools/ryujinx-setup.mjs --sideways",
     "ryujinx:check": "node tools/ryujinx-setup.mjs --check"
   },
+  "keywords": [
+    "gamepad",
+    "virtual-controller",
+    "phone-as-gamepad",
+    "dsu",
+    "cemuhook",
+    "ryujinx",
+    "dolphin-emu",
+    "cemu",
+    "macos",
+    "ios",
+    "pwa",
+    "motion-controls"
+  ],
   "dependencies": {
+    "@nut-tree-fork/nut-js": "4.2.6",
     "express": "^4.21.2",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "ws": "^8.18.0"
-  },
-  "optionalDependencies": {
-    "@nut-tree-fork/nut-js": "^4.2.1"
   }
 }

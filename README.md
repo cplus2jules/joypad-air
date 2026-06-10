@@ -1,134 +1,97 @@
-# Switch Controller
+# 🎮 joypad-air — iPhone as a game controller for macOS emulators
 
-Convierte 2 iPhones en mandos para **Ryujinx** en tu Mac.
-Sin App Store, sin Xcode, sin cuenta de developer.
+Turn your iPhone (or Android) into a wireless gamepad for **Ryujinx**,
+**Dolphin** and **Cemu** on your Mac. Low-latency buttons over Wi-Fi plus
+real **motion controls** (gyro) via the DSU/cemuhook protocol. Free, open
+source, no ads, no tracking.
 
-## Cómo funciona
+A.K.A. **"El Control Super Pro Max"** · Guía en español: [README.es.md](README.es.md)
 
-1. Un servidor Node corre en tu Mac y sirve una página web (PWA).
-2. Cada iPhone abre la URL del Mac por WiFi local → la guarda en su pantalla de inicio.
-3. Los toques en pantalla viajan al Mac por WebSocket.
-4. El servidor los traduce a pulsaciones de teclado.
-5. Ryujinx ve dos teclados virtuales y los asigna a Player 1 y Player 2.
+## Why this exists
 
-> Latencia esperada en WiFi local: ~10–25 ms. Jugable para single‑player y co‑op casual. Para juegos competitivos hardcore, mejor un mando bluetooth real.
+Every "phone as gamepad" project is Android→Windows. On macOS there was no
+way to get buttons *and* motion into Ryujinx from an iPhone — iOS DSU apps
+are motion-only, and the ones with buttons need a Windows-only companion.
+joypad-air does both, macOS-first:
 
-## Requisitos
+- **Buttons** → injected as keyboard events (nut-js / CGEventPost), the only
+  input path Ryujinx supports on macOS without a physical controller.
+- **Motion** → served as a DSU/cemuhook server on UDP 26760. Dolphin, Cemu
+  and Citra consume it natively; for Ryujinx we ship a 40-line MIT patch you
+  build locally (see below).
 
-- macOS (probado en Apple Silicon).
-- Node.js 20+ (`brew install node`).
-- iPhone con iOS 15+ en la **misma red WiFi** que el Mac.
-- Ryujinx instalado.
-
-## Instalación
+## Install (macOS)
 
 ```bash
-cd switch-controller
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/USER/joypad-air/main/install.sh)"
+```
+
+The script checks for Node ≥18 (opens the official installer if missing) and
+drops a **"🎮 El Control"** launcher on your Desktop. Double-click it, grant
+the Accessibility permission to Terminal the first time, scan the QR with
+your phone, add it to your Home Screen — done. Every launch runs
+`npx -y joypad-air@latest`, so updates are automatic.
+
+Prefer manual? `npx -y joypad-air@latest` does everything except the
+launcher.
+
+## Features
+
+- **Feel**: server-side analog→8-way conversion with radial + angular
+  hysteresis (no direction flutter), SOCD cleaning, rolling d-pad, hair
+  triggers, multi-touch that never drops your stick while you mash buttons.
+- **Haptics**: multi-stage Taptic patterns per button type (native app),
+  progressive haptics on the PWA.
+- **Personalization**: player names, 8 Joy-Con-style color themes, stick
+  sensitivity sliders, A/B·X/Y swap — synced live to the server.
+- **Status you can see**: latency dot, "Ryujinx lost focus" banner,
+  Accessibility-permission banner, player LEDs, live `/setup` dashboard.
+- **Robust**: FIFO key queue (no stuck keys), heartbeat releases keys ≤10s
+  after a phone dies, slot takeover, LAN-only connections, input validation.
+- **Ryujinx auto-config**: `npm run ryujinx:setup` generates the keyboard
+  profiles and patches `Config.json` (with backup) straight from
+  `server/mappings.js` — both players, zero key collisions.
+
+## Motion in Ryujinx (advanced)
+
+Stock Ryujinx ignores DSU motion when buttons come from a keyboard backend
+(verified in source). Build a patched "Ryujinx Motion.app" locally — we never
+distribute emulator binaries:
+
+```bash
+brew install dotnet@9
+bash tools/ryujinx-build/build-local.sh      # clones Ryubing, applies tools/ryubing-motion.patch, builds
+npm run ryujinx:setup -- --motion --patched
+```
+
+Then toggle **GIRO** on the controller and aim with your phone in Zelda or
+steer in Mario Kart.
+
+## Two players
+
+Each phone claims a slot (Player 1 / Player 2) mapped as an independent pad.
+Known limitation: a few games (MK8, Mario Wonder) require physically distinct
+HID devices for 2P and reject two keyboard-backed pads — Smash, Overcooked,
+Stardew, Cuphead and most co-op games work great.
+
+## Development
+
+```bash
 npm install
+npm start             # server on :3001 — PWA + WebSocket + DSU
+npm test              # 38-assert smoke suite (no real keyboard needed)
+npm run ryujinx:check # is Ryujinx config in sync with mappings.js?
 ```
 
-> Si `@nut-tree-fork/nut-js` falla al compilar, el servidor igual arranca en
-> "modo log" (imprime los inputs en consola sin enviar teclas). Útil para
-> probar la PWA. Para envío real de teclas, instálalo manualmente:
-> `npm install @nut-tree-fork/nut-js`
+`public/` is the PWA (the supported client). `app/` is an optional Expo
+native app (Expo Go can't open third-party projects on iOS, so it's for
+development). `server/` is the Node engine. MIT licensed.
 
-## Arrancar el servidor
+## Troubleshooting
 
-```bash
-npm start
-```
-
-Verás algo así:
-
-```
-Switch Controller corriendo
-Abre esta URL en el iPhone:  http://192.168.1.42:3000
-█▀▀▀▀▀█  (QR)
-```
-
-## Conectar el iPhone
-
-1. Abre la URL **en Safari** (no en Chrome).
-2. Toca el botón **Compartir** → **Agregar a pantalla de inicio**.
-3. Abre la app desde el icono nuevo → se ve en pantalla completa.
-4. Elige **Player 1** o **Player 2**.
-5. Gira el teléfono en horizontal.
-
-Repite con el segundo iPhone y elige el otro jugador.
-
-## Permiso de Accesibilidad en macOS
-
-La primera vez que arranques el servidor, macOS te pedirá permiso para que
-Node pueda enviar pulsaciones de teclado:
-
-**Ajustes del Sistema → Privacidad y seguridad → Accesibilidad** → activa
-**Terminal** (o iTerm, o lo que estés usando para correr `npm start`).
-
-Después reinicia el servidor.
-
-## Configurar Ryujinx
-
-Ryujinx soporta dos teclados como Player 1 y Player 2 con mapeos distintos.
-Abre **Ryujinx → Options → Settings → Input** y mapea exactamente así:
-
-### Player 1 (botón rojo en la PWA)
-
-| Botón Switch | Tecla |
+| Symptom | Fix |
 |---|---|
-| L stick ↑ / ↓ / ← / → | W / S / A / D |
-| R stick ↑ / ↓ / ← / → | I / K / J / L |
-| D-Pad ↑ / ↓ / ← / → | T / G / F / H |
-| A / B / X / Y | Z / X / C / V |
-| L / R | Q / E |
-| ZL / ZR | 1 / 2 |
-| + / − | 3 / 4 |
-| L Stick click / R Stick click | 5 / 6 |
-| Home / Capture | 7 / 8 |
-
-### Player 2 (botón azul en la PWA)
-
-> Solo letras/números/coma/= y flechas, que se asignan sin problema en un
-> MacBook (sin teclado numérico). Movimiento en **flechas**. Lo no esencial
-> para Mario (D-Pad, stick derecho, clicks, Home/Capture) va a teclas **F**
-> que se dejan **sin asignar** en Ryujinx.
-
-| Botón Switch | Tecla |
-|---|---|
-| L stick ↑ / ↓ / ← / → | ↑ / ↓ / ← / → (flechas) |
-| A / B / X / Y | M / N / O / U |
-| L / R | P / R |
-| ZL / ZR | 9 / 0 |
-| + / − | , (coma) / = |
-| R stick · D-Pad · clicks · Home/Capture | teclas F (sin asignar) |
-
-> ¿No quieres mapear todo eso a mano? Edita `server/mappings.js` para que
-> coincida con las teclas que ya usas en Ryujinx, y reinicia el servidor.
-
-## Limitaciones honestas
-
-- **Sticks digitales (8 direcciones)**. El servidor convierte el stick analógico
-  del iPhone a pulsaciones de teclado con un threshold del 40%. La mayoría de
-  juegos van bien (Mario Kart, Smash, Zelda básico). Juegos que dependen de
-  movimiento analógico fino del stick (Splatoon competitivo, BOTW caminar
-  sigiloso) se sienten "todo o nada".
-- **Sin giroscopio / sin rumble**. iOS Safari no expone esas APIs a páginas web.
-- **WiFi local obligatorio**. Mac e iPhone deben estar en la misma red.
-- **Solo 2 jugadores**. Es lo que necesitas; añadir más es cambiar el array de
-  `players` en `server/index.js`.
-
-## Problemas comunes
-
-**El iPhone no se conecta** → revisa que el Mac y el iPhone estén en la misma
-WiFi. Si tu router tiene "AP isolation" activado, desactívalo o usa una red
-de hotspot del Mac.
-
-**No envía teclas aunque dice "conectado"** → falta el permiso de
-Accesibilidad en macOS. Mira la sección de arriba.
-
-**El icono en pantalla de inicio se ve genérico** → reemplaza
-`public/icon.svg` por un PNG de 192×192 y 512×512, o tócalo desde Safari y
-elige una imagen propia al agregar a inicio.
-
-**Inputs se quedan "pegados"** → si la conexión se cae a mitad de pulsación,
-el servidor libera todas las teclas en `close`. Si igual ocurre, presiona y
-suelta la misma tecla físicamente, o reinicia el servidor (`Ctrl+C` + `npm start`).
+| Controller "types letters" into random apps | Ryujinx lost focus — click its window (the controller shows a banner). |
+| Connected but game doesn't react | Grant Accessibility to Terminal (System Settings → Privacy & Security). |
+| Phone can't find the server | Same Wi-Fi? Guest networks isolate clients. iOS: Settings → Privacy → Local Network. |
+| Remap keys | Edit `server/mappings.js`, run `npm run ryujinx:setup`. |
