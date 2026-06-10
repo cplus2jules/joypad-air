@@ -16,6 +16,9 @@ const DEFAULT_PROFILE = {
   buttonScale: 1.0,
   swapAB: false,
   clickSound: false,
+  // Umbrales del stick-engine del server (histéresis de dirección)
+  engage: 0.55,
+  release: 0.40,
 };
 
 export const DEFAULT_SETTINGS = {
