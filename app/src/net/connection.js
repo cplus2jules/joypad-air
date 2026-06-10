@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Constants from 'expo-constants';
 import { haptic } from '../haptics';
+import { useSettings } from '../store/settings';
 
 export const SERVER_PORT = 3001;
 const PING_INTERVAL_MS = 2000;
 
-export function detectHost() {
+// Prioridad: host manual (settings.host, escrito en el Picker) →
+// hostUri del bundler. Fuera de Expo Go no hay hostUri: sin el manual
+// la app quedaba en 'sin host' permanente.
+export function detectHost(manualHost) {
+  if (manualHost) return manualHost;
   const hu =
     Constants.expoConfig?.hostUri ||
     Constants.expoGoConfig?.developer?.hostUri ||
@@ -43,7 +48,8 @@ export function useConnection(player, profile, opts) {
   const [rtt, setRtt] = useState(null);
   const [serverInfo, setServerInfo] = useState(INITIAL_SERVER_INFO);
   const rttRef = useRef(null); // valor crudo del EMA (sin redondear)
-  const host = useMemo(() => detectHost(), []);
+  const { settings } = useSettings();
+  const host = useMemo(() => detectHost(settings.host), [settings.host]);
 
   const name = profile?.name ?? `Chocorramito ${player}`;
   const themeId = profile?.themeId ?? 'neon';

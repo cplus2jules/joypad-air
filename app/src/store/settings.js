@@ -28,6 +28,9 @@ export const DEFAULT_SETTINGS = {
   lastSlot: 1,
   lastLayout: 'full',
   onboarded: false,
+  // IP del Mac escrita a mano (Picker) — null ⇒ autodetección por hostUri.
+  // Necesario fuera de Expo Go, donde Constants no trae hostUri.
+  host: null,
   profiles: {
     1: { name: 'Chocorramito 1', ...DEFAULT_PROFILE },
     2: { name: 'Chocorramito 2', ...DEFAULT_PROFILE },

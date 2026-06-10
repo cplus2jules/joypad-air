@@ -119,7 +119,7 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
     motion: motionOn,
     orientation,
   });
-  const host = useMemo(() => detectHost(), []);
+  const host = useMemo(() => detectHost(settings.host), [settings.host]);
   const battery = useBatteryLevel(); // 0..1, o -1 mientras no hay dato
   const batteryLow = battery >= 0 && battery < 0.2;
 

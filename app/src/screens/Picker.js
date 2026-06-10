@@ -5,6 +5,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -277,10 +278,13 @@ function PlayerCard({ player, onPick, occupied = null, habitual = false, onLongP
 
 // ── Picker ──────────────────────────────────────────────
 export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
-  const host = detectHost();
-  const battery = useBatteryLevel(); // 0..1, o -1 mientras no hay dato
   const { settings, ready, update } = useSettings();
+  // Prioriza el host manual (settings.host) sobre la autodetección
+  const host = detectHost(settings.host);
+  const battery = useBatteryLevel(); // 0..1, o -1 mientras no hay dato
   const serverStatus = useServerStatus(host);
+  // IP escrita a mano — solo se persiste al tocar "Conectar"
+  const [hostInput, setHostInput] = useState('');
   const fade1 = useRef(new Animated.Value(0)).current;
   const fade2 = useRef(new Animated.Value(0)).current;
   const fade3 = useRef(new Animated.Value(0)).current;
@@ -323,6 +327,19 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
     onPick(player);
   };
 
+  const connectManualHost = () => {
+    const ip = hostInput.trim();
+    if (!ip) return;
+    haptic.select();
+    update({ host: ip });
+  };
+
+  const clearManualHost = () => {
+    haptic.select();
+    setHostInput('');
+    update({ host: null }); // vuelve a la autodetección por hostUri
+  };
+
   const showFirstTimeHint = !host || !settings.onboarded;
 
   const layouts = [
@@ -355,7 +372,35 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
             <Text style={s.brandHost}>
               {host ? `${host}:${SERVER_PORT}` : 'sin Mac'}
             </Text>
+            {host && settings.host ? (
+              <Pressable onPress={clearManualHost} hitSlop={8} style={s.hostClearBtn}>
+                <Text style={s.hostClearText}>×</Text>
+              </Pressable>
+            ) : null}
           </View>
+          {!host && (
+            <View style={s.hostManualRow}>
+              <TextInput
+                style={s.hostInput}
+                value={hostInput}
+                onChangeText={setHostInput}
+                onSubmitEditing={connectManualHost}
+                placeholder="IP del Mac, ej: 192.168.1.50"
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                autoCorrect={false}
+                autoCapitalize="none"
+                keyboardType="numbers-and-punctuation"
+                returnKeyType="done"
+                keyboardAppearance="dark"
+              />
+              <Pressable
+                onPress={connectManualHost}
+                style={[s.hostConnectBtn, !hostInput.trim() && { opacity: 0.4 }]}
+              >
+                <Text style={s.hostConnectText}>Conectar</Text>
+              </Pressable>
+            </View>
+          )}
           <Text style={s.batteryText}>
             🔋 {battery >= 0 ? `${Math.round(battery * 100)}%` : '—'}
           </Text>
@@ -514,6 +559,55 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  // ── Host manual (sin autodetección) ─────────────────
+  hostClearBtn: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  hostClearText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  hostManualRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  hostInput: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    color: '#fff',
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  hostConnectBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  hostConnectText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   batteryText: {
     color: C.inkDim,
