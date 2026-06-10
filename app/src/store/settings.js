@@ -57,33 +57,63 @@ const SettingsContext = createContext({
   update: () => {},
 });
 
+// Aplica un patch pendiente (raíz o de perfil) sobre un settings dado
+function applyPatch(base, p) {
+  if (p.slot != null) {
+    return {
+      ...base,
+      profiles: {
+        ...base.profiles,
+        [p.slot]: { ...base.profiles[p.slot], ...p.patch },
+      },
+    };
+  }
+  return { ...base, ...p.patch };
+}
+
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [ready, setReady] = useState(false);
   const saveTimerRef = useRef(null);
+  // Antes de que resuelva el getItem, persistir escribiría DEFAULTS+patch
+  // (borrando nombres/temas guardados). Los patches pre-carga se aplican
+  // en memoria Y se acumulan aquí para re-aplicarlos sobre lo cargado.
+  const readyRef = useRef(false);
+  const pendingRef = useRef([]);
 
   // Carga única al montar
   useEffect(() => {
     let alive = true;
     AsyncStorage.getItem(STORAGE_KEY)
+      .catch(() => null)
       .then((raw) => {
-        if (!alive || !raw) return;
-        try {
-          setSettings(mergeWithDefaults(JSON.parse(raw)));
-        } catch {}
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (alive) setReady(true);
+        if (!alive) return;
+        let merged = DEFAULT_SETTINGS;
+        if (raw) {
+          try {
+            merged = mergeWithDefaults(JSON.parse(raw));
+          } catch {}
+        }
+        // Re-aplicar en orden los patches hechos antes de la carga
+        const pending = pendingRef.current;
+        pendingRef.current = [];
+        let next = merged;
+        for (const p of pending) next = applyPatch(next, p);
+        readyRef.current = true;
+        setSettings(next);
+        setReady(true);
+        if (pending.length) persist(next);
       });
     return () => {
       alive = false;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Escritura debounced
+  // Escritura debounced — nunca antes de que la carga resuelva
   const persist = (next) => {
+    if (!readyRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {});
@@ -91,6 +121,7 @@ export function SettingsProvider({ children }) {
   };
 
   const update = (patch) => {
+    if (!readyRef.current) pendingRef.current.push({ patch });
     setSettings((prev) => {
       const next = { ...prev, ...patch };
       persist(next);
@@ -99,6 +130,7 @@ export function SettingsProvider({ children }) {
   };
 
   const updateProfile = (slot, patch) => {
+    if (!readyRef.current) pendingRef.current.push({ slot, patch });
     setSettings((prev) => {
       const next = {
         ...prev,
