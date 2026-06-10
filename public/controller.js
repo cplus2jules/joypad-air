@@ -75,6 +75,7 @@ const claimed = new Set();
 
 // ─── DOM ────────────────────────────────────────────────────────────────────
 const elPicker = $("#picker");
+const elPickerToast = $("#picker-toast");
 const elPad = $("#pad");
 const elRotate = $("#rotate-hint");
 const elPillName = $("#pill-name");
@@ -136,10 +137,19 @@ function wsConnect() {
     if (msg && typeof msg.t === "string") handleServerMessage(msg);
   });
 
-  socket.addEventListener("close", () => {
+  socket.addEventListener("close", (e) => {
     if (socket !== ws) return;
     ws = null;
     stopPing();
+    if (e.code === 4000) {
+      // Otro dispositivo tomó el slot: NO reconectar (si no, dos teléfonos
+      // con el mismo slot guardado se expulsan mutuamente en ping-pong
+      // infinito). De vuelta al picker, con aviso visible.
+      shouldReconnect = false;
+      showPicker();
+      showPickerToast("Otro mando tomó tu slot");
+      return;
+    }
     if (shouldReconnect) {
       setWsStatus("reconnecting");
       scheduleReconnect();
@@ -725,6 +735,15 @@ function startStatusPoll() {
 function stopStatusPoll() {
   clearInterval(statusTimer);
   statusTimer = null;
+}
+
+// Toast del picker (aviso temporal — p. ej. «Otro mando tomó tu slot»)
+let pickerToastTimer = null;
+function showPickerToast(msg, ms = 4000) {
+  elPickerToast.textContent = msg;
+  elPickerToast.classList.add("show");
+  clearTimeout(pickerToastTimer);
+  pickerToastTimer = setTimeout(() => elPickerToast.classList.remove("show"), ms);
 }
 
 function markLastCard() {
