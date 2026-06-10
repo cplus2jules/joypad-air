@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -12,7 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { C, JOYCON_THEMES, resolveTheme } from '../theme';
-import { haptic, depth, setIntensity } from '../haptics';
+import { haptic, depth, getIntensity, setIntensity } from '../haptics';
 import { useMotionSample } from '../motion';
 import { useSettings } from '../store/settings';
 
@@ -162,7 +162,10 @@ function ToggleRow({ label, value, accent, onChange }) {
 }
 
 // ── Settings ────────────────────────────────────────────
-export default function Settings({ initialSlot = 1, onClose }) {
+// activePlayer: slot del Pad montado debajo del overlay (null si se
+// abrió desde el Picker) — la intensidad háptica GLOBAL solo debe
+// seguir a ese perfil, no al que se esté editando.
+export default function Settings({ initialSlot = 1, activePlayer = null, onClose }) {
   const { settings, updateProfile } = useSettings();
   const [slot, setSlot] = useState(initialSlot === 2 ? 2 : 1);
   // Muestra en vivo del acelerómetro — solo existe con GIRO activo en el Pad
@@ -201,11 +204,47 @@ export default function Settings({ initialSlot = 1, onClose }) {
     updateProfile(slot, { release: round2(Math.min(v, max)) });
   };
 
+  // Settings fresco para el cleanup de desmontaje (closure de deps [])
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const previewTimerRef = useRef(null);
+
   const pickHaptic = (id) => {
     updateProfile(slot, { hapticLevel: id });
-    setIntensity(id);
-    depth.buttonIn(); // preview con el nivel recién elegido
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+    if (activePlayer == null || slot === activePlayer) {
+      // Perfil activo (o sin Pad montado): la intensidad global sí cambia
+      setIntensity(id);
+      depth.buttonIn(); // preview con el nivel recién elegido
+    } else {
+      // Editando el OTRO perfil: preview temporal sin desincronizar la
+      // háptica global del jugador activo (patrones <150ms → 250ms basta)
+      const prev = getIntensity();
+      setIntensity(id);
+      depth.buttonIn();
+      previewTimerRef.current = setTimeout(() => {
+        previewTimerRef.current = null;
+        setIntensity(prev);
+      }, 250);
+    }
   };
+
+  // Al cerrar Settings: cancelar el preview pendiente y dejar la
+  // intensidad global en el nivel del perfil del jugador activo
+  useEffect(
+    () => () => {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+      if (activePlayer != null) {
+        const lvl = settingsRef.current.profiles[activePlayer]?.hapticLevel;
+        if (lvl) setIntensity(lvl);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   return (
     <View style={s.root}>

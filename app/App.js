@@ -48,10 +48,13 @@ export default function App() {
           />
         )}
         {/* Overlay: el Pad sigue montado debajo → el WS no se corta y el
-            config (engage/release/nombre/tema) se reenvía en vivo */}
+            config (engage/release/nombre/tema) se reenvía en vivo.
+            activePlayer: slot del Pad montado (null si vino del Picker) —
+            la háptica global solo sigue al perfil realmente activo. */}
         {settingsSlot != null && (
           <Settings
             initialSlot={settingsSlot}
+            activePlayer={player}
             onClose={() => setSettingsSlot(null)}
           />
         )}
