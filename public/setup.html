@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>El Control Super Pro Max — Setup</title>
+  <style>
+    :root {
+      --bg: #0b0d12; --card: #14171e; --border: #232733;
+      --ink: #f5f6f8; --dim: #9aa0ad;
+      --red: #ff3d54; --blue: #00c3e2; --ok: #5ad07a; --warn: #faa005; --err: #ff6f7a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--ink); min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 32px 20px 60px;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; }
+    h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+    h1 .grad {
+      background: linear-gradient(90deg, var(--red), var(--blue));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .sub { color: var(--dim); margin: 6px 0 28px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 18px;
+    }
+    .card h2 {
+      font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--dim); margin-bottom: 12px;
+    }
+    .row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 14px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .dot.err { background: var(--err); box-shadow: 0 0 8px var(--err); }
+    .dot.off { background: #3a3d45; }
+    .hint { color: var(--dim); font-size: 12px; margin-top: 4px; padding-left: 20px; line-height: 1.5; }
+    .qr-card { text-align: center; grid-column: 1 / -1; }
+    .qr-card img {
+      width: 200px; height: 200px; border-radius: 12px; background: #fff; padding: 10px;
+      image-rendering: pixelated;
+    }
+    .url { font-family: Menlo, monospace; font-size: 15px; color: var(--blue); margin-top: 10px; }
+    .steps { color: var(--dim); font-size: 13px; margin-top: 12px; line-height: 1.8; }
+    .player {
+      display: flex; align-items: center; gap: 12px; padding: 10px;
+      border: 1px solid var(--border); border-radius: 12px; margin-top: 8px;
+    }
+    .player .num {
+      width: 34px; height: 34px; border-radius: 10px; display: flex;
+      align-items: center; justify-content: center; font-weight: 800; font-size: 16px;
+    }
+    .p1 .num { background: rgba(255, 61, 84, .15); color: var(--red); }
+    .p2 .num { background: rgba(0, 195, 226, .15); color: var(--blue); }
+    .player .info { flex: 1; }
+    .player .name { font-weight: 700; font-size: 14px; }
+    .player .meta { color: var(--dim); font-size: 12px; }
+    .badge {
+      font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px;
+    }
+    .badge.on { background: rgba(90, 208, 122, .15); color: var(--ok); }
+    .badge.off { background: rgba(154, 160, 173, .12); color: var(--dim); }
+    footer { color: var(--dim); font-size: 12px; text-align: center; margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🎮 <span class="grad">El Control Super Pro Max</span></h1>
+    <p class="sub">Estado del sistema en vivo — esta página se actualiza sola cada 2 segundos.</p>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Mac</h2>
+        <div class="row"><span class="dot off" id="d-backend"></span><span id="t-backend">Comprobando backend…</span></div>
+        <div class="row"><span class="dot off" id="d-access"></span><span id="t-access">Comprobando permiso de Accesibilidad…</span></div>
+        <div class="hint" id="h-access" hidden>
+          Ajustes del Sistema → Privacidad y seguridad → <b>Accesibilidad</b> →
+          activa la casilla de <b>Terminal</b> (o Play). El server lo detecta solo.
+        </div>
+        <div class="row"><span class="dot off" id="d-focus"></span><span id="t-focus">Comprobando foco…</span></div>
+        <div class="hint" id="h-focus" hidden>
+          Las teclas viajan a la app con foco: haz click en la ventana de Ryujinx antes de jugar.
+        </div>
+        <div class="row"><span class="dot off" id="d-dsu"></span><span id="t-dsu">Motion (DSU)…</span></div>
+      </div>
+
+      <div class="card">
+        <h2>Mandos</h2>
+        <div class="player p1">
+          <div class="num">1</div>
+          <div class="info"><div class="name" id="p1-name">Chocorramito 1</div><div class="meta" id="p1-meta">—</div></div>
+          <span class="badge off" id="p1-badge">libre</span>
+        </div>
+        <div class="player p2">
+          <div class="num">2</div>
+          <div class="info"><div class="name" id="p2-name">Chocorramito 2</div><div class="meta" id="p2-meta">—</div></div>
+          <span class="badge off" id="p2-badge">libre</span>
+        </div>
+      </div>
+
+      <div class="card qr-card">
+        <h2>Conecta tu iPhone</h2>
+        <img src="/qr.png" alt="QR para el iPhone" onerror="this.style.display='none'">
+        <div class="url" id="t-url">—</div>
+        <div class="steps">
+          1. Escanea el QR con la Cámara (misma WiFi) · 2. Se abre en Safari ·
+          3. Compartir → <b>Agregar a pantalla de inicio</b> · 4. Ábrelo desde el icono
+        </div>
+      </div>
+    </div>
+
+    <footer>Ryujinx ya quedó configurado con <code>npm run ryujinx:setup</code> · estado crudo en <a href="/status" style="color:var(--blue)">/status</a></footer>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    function dot(id, cls) { $(id).className = "dot " + cls; }
+
+    async function refresh() {
+      let st;
+      try {
+        st = await (await fetch("/status")).json();
+      } catch {
+        dot("d-backend", "err"); $("t-backend").textContent = "Server no responde";
+        return;
+      }
+
+      $("t-url").textContent = location.origin;
+
+      if (st.native) { dot("d-backend", "ok"); $("t-backend").textContent = "Teclado nativo (nut-js) listo"; }
+      else { dot("d-backend", "warn"); $("t-backend").textContent = "Backend de consola — las teclas NO llegan a Ryujinx"; }
+
+      if (st.accessibility === true) { dot("d-access", "ok"); $("t-access").textContent = "Permiso de Accesibilidad concedido"; $("h-access").hidden = true; }
+      else if (st.accessibility === false) { dot("d-access", "err"); $("t-access").textContent = "Falta el permiso de Accesibilidad"; $("h-access").hidden = false; }
+      else { dot("d-access", "warn"); $("t-access").textContent = "Permiso de Accesibilidad: desconocido"; }
+
+      if (st.ryujinxFocused === true) { dot("d-focus", "ok"); $("t-focus").textContent = "Ryujinx tiene el foco"; $("h-focus").hidden = true; }
+      else if (st.ryujinxFocused === false) { dot("d-focus", "warn"); $("t-focus").textContent = "Al frente: " + (st.focusApp || "otra app"); $("h-focus").hidden = false; }
+      else { dot("d-focus", "off"); $("t-focus").textContent = "Foco: esperando jugadores"; $("h-focus").hidden = true; }
+
+      const dsuSlots = st.dsu && st.dsu.slots ? Object.values(st.dsu.slots).filter(Boolean) : [];
+      if (st.dsu && st.dsu.listening) {
+        dot("d-dsu", dsuSlots.length ? "ok" : "off");
+        $("t-dsu").textContent = dsuSlots.length
+          ? `Motion activo (${dsuSlots.map((s) => s.hz + " Hz").join(", ")})`
+          : "Motion (DSU) en espera — activa GIRO en el iPhone";
+      } else {
+        dot("d-dsu", "off"); $("t-dsu").textContent = "Motion (DSU) desactivado";
+      }
+
+      for (const n of [1, 2]) {
+        const p = st.players?.[n];
+        const badge = $(`p${n}-badge`);
+        if (p?.connected) {
+          badge.textContent = "conectado"; badge.className = "badge on";
+          $(`p${n}-name`).textContent = p.name || `Chocorramito ${n}`;
+          $(`p${n}-meta`).textContent =
+            (p.rttMs != null ? `${p.rttMs} ms · ` : "") +
+            `${p.msgsPerSec || 0} msg/s` +
+            (p.motion ? " · giro ✓" : "");
+        } else {
+          badge.textContent = "libre"; badge.className = "badge off";
+          $(`p${n}-meta`).textContent = "—";
+        }
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

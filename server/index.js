@@ -2,7 +2,9 @@ import express from "express";
 import { WebSocketServer } from "ws";
 import { createServer } from "http";
 import { networkInterfaces } from "os";
+import { execFile } from "child_process";
 import qrcode from "qrcode-terminal";
+import QRCode from "qrcode";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -12,7 +14,7 @@ import { createKeyQueue } from "./key-queue.js";
 import { validateMessage, makeRateLimiter, isPrivateAddress } from "./validate.js";
 import { createStickEngine } from "./stick-engine.js";
 import { createFocusWatcher } from "./focus.js";
-import { checkAccessibility, accessibilityStatus, printAccessibilityHelp } from "./accessibility.js";
+import { checkAccessibility, accessibilityStatus, printAccessibilityHelp, requestAccessibility } from "./accessibility.js";
 import { createDsuServer } from "./dsu/server.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -307,6 +309,26 @@ const rateTick = setInterval(() => {
 }, 5000);
 rateTick.unref?.();
 
+// ── Setup y QR ──────────────────────────────────────────────────────────────
+app.get("/setup", (_req, res) => {
+  res.sendFile(join(__dirname, "..", "public", "setup.html"));
+});
+
+app.get("/qr.png", async (_req, res) => {
+  const ip = getLocalIPs()[0];
+  if (!ip) return res.status(404).end();
+  try {
+    const png = await QRCode.toBuffer(`http://${ip}:${PORT}`, {
+      width: 400,
+      margin: 1,
+      color: { dark: "#0b0d12", light: "#ffffff" },
+    });
+    res.type("png").send(png);
+  } catch {
+    res.status(500).end();
+  }
+});
+
 // ── Estado ──────────────────────────────────────────────────────────────────
 app.get("/status", async (req, res) => {
   if (req.query.refresh === "1") await checkAccessibility();
@@ -357,9 +379,23 @@ function getLocalIPs() {
   return ips;
 }
 
+// Onboarding de Accesibilidad: si falta el permiso, pre-insertar la app en
+// la lista, abrir el panel correcto de Ajustes y esperar a que el usuario
+// active la casilla — el server arranca igual (QR + /setup disponibles) y
+// avisa solo cuando el permiso llega.
 const accessibilityOk = await checkAccessibility();
-if (keyboard.isNative && accessibilityOk === false) {
+const needsOnboarding = keyboard.isNative && accessibilityOk === false;
+if (needsOnboarding) {
   printAccessibilityHelp();
+  requestAccessibility();
+  const poll = setInterval(async () => {
+    if ((await checkAccessibility()) === true) {
+      clearInterval(poll);
+      console.log("\n✓ Permiso de Accesibilidad concedido — ¡a jugar!\n");
+      broadcast({ t: "accessibility", ok: true });
+    }
+  }, 2000);
+  poll.unref?.();
 }
 
 server.listen(PORT, "0.0.0.0", () => {
@@ -384,9 +420,15 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log("  2. Compartir -> Agregar a pantalla de inicio");
   console.log("  3. Abre la app desde el icono, elige Player 1 o Player 2");
   console.log("");
-  console.log(`Estado del servidor: http://localhost:${PORT}/status`);
+  console.log(`Panel de estado: http://localhost:${PORT}/setup`);
   console.log("Mapeo de teclas para Ryujinx: npm run ryujinx:setup (ver README.md)");
   console.log("Ctrl+C para detener");
+
+  // Si falta el permiso de Accesibilidad, abrir el panel guiado en el
+  // navegador (solo entonces — en el uso diario no estorba).
+  if (needsOnboarding) {
+    execFile("open", [`http://localhost:${PORT}/setup`]);
+  }
 });
 
 async function shutdown() {

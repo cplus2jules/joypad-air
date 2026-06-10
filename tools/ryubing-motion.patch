@@ -167,3 +167,27 @@
                          {
                              int slot = inputData.Shared.Slot;
  
+--- a/nuget.config
++++ b/nuget.config
+@@ -6,7 +6,9 @@
+         <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+         <!-- Only needed when using pre-release versions of Ryujinx.LibHac. -->
+         <add key="LibHacAlpha" value="https://git.ryujinx.app/api/v4/projects/17/packages/nuget/index.json" />
+-        <add key="Ryujinx.UpdateClient" value="https://git.ryujinx.app/api/v4/projects/71/packages/nuget/index.json" />
++        <!-- El feed Ryujinx.UpdateClient (projects/71) devuelve 404; los
++             paquetes Ryujinx.UpdateClient y Ryujinx.Systems.Update.Common
++             están publicados en nuget.org — el patrón * los cubre. -->
+     </packageSources>
+     <packageSourceMapping>
+         <!-- key value for <packageSource> should match key values from <packageSources> element -->
+@@ -14,10 +16,6 @@
+         <packageSource key="nuget.org">
+             <package pattern="*" />
+         </packageSource>
+-        <packageSource key="Ryujinx.UpdateClient">
+-            <package pattern="Ryujinx.UpdateClient" />
+-            <package pattern="Ryujinx.Systems.Update.Common" />
+-        </packageSource>
+         <packageSource key="LibHacAlpha">
+             <package pattern="Ryujinx.LibHac" />
+         </packageSource>
