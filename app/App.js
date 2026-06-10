@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { C } from './src/theme';
+import { SettingsProvider } from './src/store/settings';
 import Picker from './src/screens/Picker';
 import Pad from './src/screens/Pad';
 
@@ -23,20 +24,22 @@ export default function App() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={s.root}>
-      <StatusBar hidden />
-      {player == null ? (
-        <Picker layout={layout} onLayout={setLayout} onPick={setPlayer} />
-      ) : (
-        <Pad
-          player={player}
-          layout={layout}
-          compact={compact}
-          onToggleCompact={() => setCompact((c) => !c)}
-          onBack={() => setPlayer(null)}
-        />
-      )}
-    </GestureHandlerRootView>
+    <SettingsProvider>
+      <GestureHandlerRootView style={s.root}>
+        <StatusBar hidden />
+        {player == null ? (
+          <Picker layout={layout} onLayout={setLayout} onPick={setPlayer} />
+        ) : (
+          <Pad
+            player={player}
+            layout={layout}
+            compact={compact}
+            onToggleCompact={() => setCompact((c) => !c)}
+            onBack={() => setPlayer(null)}
+          />
+        )}
+      </GestureHandlerRootView>
+    </SettingsProvider>
   );
 }
 
