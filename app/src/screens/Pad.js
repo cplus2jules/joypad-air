@@ -11,6 +11,7 @@ import { haptic, setIntensity } from '../haptics';
 import { setClickEnabled } from '../sound';
 import { useConnection } from '../net/connection';
 import { useSettings } from '../store/settings';
+import ConnectOverlay from '../components/ConnectOverlay';
 import RecessedBtn from '../components/RecessedBtn';
 import ShoulderCluster from '../components/ShoulderCluster';
 import { SymbolBtn, CaptureBtn, HomeBtn } from '../components/SymbolButtons';
@@ -83,6 +84,9 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
         {layout === 'left' && <SidewaysLeft send={send} theme={theme} profile={profile} />}
         {layout === 'right' && <SidewaysRight send={send} theme={theme} profile={profile} />}
       </View>
+
+      {/* Animación de acople al conectar (encima de todo, no toca input) */}
+      <ConnectOverlay status={status} theme={theme} name={profile.name} />
     </View>
   );
 }
