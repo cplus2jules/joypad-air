@@ -7,7 +7,11 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node tools/smoke-test.mjs"
+    "test": "node tools/smoke-test.mjs",
+    "ryujinx:setup": "node tools/ryujinx-setup.mjs",
+    "ryujinx:pro": "node tools/ryujinx-setup.mjs",
+    "ryujinx:sideways": "node tools/ryujinx-setup.mjs --sideways",
+    "ryujinx:check": "node tools/ryujinx-setup.mjs --check"
   },
   "dependencies": {
     "express": "^4.21.2",
