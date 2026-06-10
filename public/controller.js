@@ -306,6 +306,12 @@ function bindPressButton(el, { level = "medium", getKey } = {}) {
     pid = e.pointerId;
     claimed.add(pid);
     try { el.setPointerCapture(pid); } catch { /* no-op */ }
+    // Liberar la captura (también la IMPLÍCITA que iOS da al touch): con
+    // captura activa los boundary events NO disparan, así que pointerleave
+    // nunca llegaba → el botón quedaba retenido al deslizar fuera y la
+    // adopción del dedo por los hair-triggers era inalcanzable. Sin captura,
+    // pointerup con el dedo dentro sigue llegando al botón (target normal).
+    try { el.releasePointerCapture(e.pointerId); } catch { /* no-op */ }
     el.classList.add("pressed");
     send({ t: "btn", k: key(), d: true });
     haptic(level);
