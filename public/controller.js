@@ -66,6 +66,7 @@ const state = {
   focusOk: true,
   focusApp: null,
   accessibilityOk: true,   // true | false | "unknown"
+  nativeOk: true,          // false ⇒ nut-js no cargó en el Mac (modo log)
   orientation: "landscape-right",
 };
 
@@ -201,6 +202,9 @@ function handleServerMessage(msg) {
   switch (msg.t) {
     case "hello":
       state.accessibilityOk = msg.accessibility;
+      // native:false ⇒ las teclas se imprimen en consola y no llegan a
+      // Ryujinx (también con FORCE_LOG=1, donde el aviso es igual de cierto)
+      state.nativeOk = msg.native !== false;
       state.focusOk = msg.focus ? !!msg.focus.ok : true;
       state.focusApp = (msg.focus && msg.focus.app) || null;
       updateBanner();
@@ -265,8 +269,12 @@ $("#lat-btn").addEventListener("click", () => {
 let bannerFlashTimer = null;
 
 function bannerMessage() {
+  // Prioridad: accesibilidad > teclado nativo > foco
   if (state.accessibilityOk === false) {
     return "Falta el permiso de Accesibilidad en el Mac — mira la Terminal";
+  }
+  if (state.nativeOk === false) {
+    return "El teclado nativo no cargó en el Mac — mira la Terminal (modo log)";
   }
   if (state.focusOk === false) {
     return "Ryujinx no tiene el foco — haz click en su ventana";
