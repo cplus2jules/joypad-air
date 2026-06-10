@@ -58,7 +58,8 @@ function LatencyDot({ rtt }) {
       style={s.latencyWrap}
     >
       <View style={[s.latencyDot, { backgroundColor: color }]} />
-      {showMs && <Text style={s.latencyText}>{rtt} ms</Text>}
+      {/* rtt puede volverse null tras una caída — sin el doble check quedaba un " ms" huérfano */}
+      {showMs && rtt != null && <Text style={s.latencyText}>{rtt} ms</Text>}
     </Pressable>
   );
 }
@@ -199,13 +200,18 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
     } catch {}
   };
 
-  // Aviso accionable del server (prioridad: accesibilidad > foco).
+  // Aviso accionable del server (prioridad: accesibilidad > native > foco).
   // Solo con hello recibido y conectado — sin socket manda el overlay
   // de reconexión, y antes del handshake no hay datos fiables.
+  // accessibility y native son problemas distintos: el teclado nativo
+  // puede no cargar (modo log) con la Accesibilidad concedida.
   const bannerMsg = useMemo(() => {
     if (status !== 'conectado' || !serverInfo.hello) return null;
-    if (serverInfo.accessibility === false || !serverInfo.native) {
+    if (serverInfo.accessibility === false) {
       return 'Falta el permiso de Accesibilidad en el Mac — mira la Terminal';
+    }
+    if (serverInfo.native === false) {
+      return 'El teclado nativo no cargó en el Mac — mira la Terminal (modo log)';
     }
     if (serverInfo.focus?.ok === false) {
       return 'Ryujinx no tiene el foco — toca su ventana en el Mac';
