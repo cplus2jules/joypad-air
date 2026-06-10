@@ -12,6 +12,7 @@ import { setClickEnabled } from '../sound';
 import { useConnection } from '../net/connection';
 import { useSettings } from '../store/settings';
 import ConnectOverlay from '../components/ConnectOverlay';
+import PlayerLeds from '../components/PlayerLeds';
 import RecessedBtn from '../components/RecessedBtn';
 import ShoulderCluster from '../components/ShoulderCluster';
 import { SymbolBtn, CaptureBtn, HomeBtn } from '../components/SymbolButtons';
@@ -46,15 +47,18 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
         <Pressable onPress={() => { haptic.light(); onBack(); }} style={s.backBtn}>
           <Text style={s.backText}>‹</Text>
         </Pressable>
-        <Pressable
-          onLongPress={() => { haptic.medium(); onOpenSettings?.(); }}
-          delayLongPress={400}
-          style={[s.playerPill, { backgroundColor: accent }]}
-        >
-          <Text style={[s.playerPillText, { color: pillInk }]}>
-            {profile.name.toUpperCase()}
-          </Text>
-        </Pressable>
+        <View style={s.pillCol}>
+          <Pressable
+            onLongPress={() => { haptic.medium(); onOpenSettings?.(); }}
+            delayLongPress={400}
+            style={[s.playerPill, { backgroundColor: accent }]}
+          >
+            <Text style={[s.playerPillText, { color: pillInk }]}>
+              {profile.name.toUpperCase()}
+            </Text>
+          </Pressable>
+          <PlayerLeds player={player} accent={accent} status={status} />
+        </View>
         <Text
           style={[
             s.statusText,
@@ -300,7 +304,7 @@ const s = StyleSheet.create({
   // Pad
   pad: { flex: 1, backgroundColor: C.bg },
   topBar: {
-    height: 34,
+    height: 40, // 34 → 40: hueco para los LEDs bajo el pill
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -309,6 +313,7 @@ const s = StyleSheet.create({
   },
   backBtn: { position: 'absolute', left: 12, paddingVertical: 4, paddingHorizontal: 10 },
   backText: { color: C.inkDim, fontSize: 22, fontWeight: '700' },
+  pillCol: { alignItems: 'center' },
   playerPill: { paddingHorizontal: 12, paddingVertical: 3, borderRadius: 10 },
   playerPillText: { color: '#fff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
   statusText: { color: C.inkDim, fontSize: 10 },
