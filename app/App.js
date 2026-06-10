@@ -592,8 +592,8 @@ function RightJoycon({ send, compact }) {
   );
 }
 
-// ── Recessed (deep) button — used for face / shoulders / dpad ─
-function RecessedBtn({ name, label, send, style, textStyle, h = 'medium', releaseHaptic = 'select' }) {
+// ── D-Pad (4 separate round buttons like real Joy-Con) ─
+function DPad({ send }) {
   const scale = useRef(new Animated.Value(1)).current;
   const pressY = useRef(new Animated.Value(0)).current;
   const glow = useRef(new Animated.Value(0)).current;

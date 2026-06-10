@@ -10,10 +10,12 @@ import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import dgram from "node:dgram";
 import WebSocket from "ws";
 
 import { createStickEngine } from "../server/stick-engine.js";
 import { createKeyQueue } from "../server/key-queue.js";
+import { encodeDataRequest, encodeInfoRequest, decodeResponse, MSG } from "../server/dsu/packets.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -245,6 +247,70 @@ const logSince = (mark) => serverLog.slice(mark);
   check("/status cuenta mensajes inválidos", st.invalidMsgs >= 3);
   check("/status backend log", st.native === false);
   ws.close();
+}
+
+// ── 4. DSU: motion iPhone → protocolo CemuHook ──────────────────────────────
+console.log("\n[4] DSU: ws motion → data responses con transformación de ejes");
+{
+  const { ws } = await connect(1);
+  await sleep(100);
+
+  const dsuPort = 26760; // el server de test lo abre en el default (loopback)
+  const udp = dgram.createSocket("udp4");
+  udp.connect(dsuPort, "127.0.0.1");
+  const responses = [];
+  udp.on("message", (buf) => {
+    const r = decodeResponse(buf);
+    if (r) responses.push(r);
+  });
+  await new Promise((r) => udp.on("connect", r));
+
+  udp.send(encodeInfoRequest(0, [0]));
+  await sleep(150);
+  const info0 = responses.find((r) => r.type === MSG.INFO);
+  check("info response llega con CRC válido", !!info0 && info0.crcOk);
+  check("slot 0 Disconnected sin motion", info0?.state === 0);
+
+  // suscribirse al slot 0 y alimentar motion por WS (device plano boca
+  // arriba: az = -1g; gyro girando solo sobre el eje Y del device)
+  const dataTick = setInterval(() => udp.send(encodeDataRequest(0, 0)), 16);
+  let ts = 1_000_000;
+  const feedTick = setInterval(() => {
+    ts += 16_666;
+    ws.send(JSON.stringify({ t: "motion", ax: 0, ay: 0, az: -1, gx: 0, gy: 90, gz: 0, ts }));
+  }, 16);
+  await sleep(1500);
+  clearInterval(feedTick);
+  clearInterval(dataTick);
+
+  const datas = responses.filter((r) => r.type === MSG.DATA);
+  check(`llegan data responses (~60Hz, got ${datas.length} en 1.5s)`, datas.length > 50);
+  check("todas de 100 bytes", datas.every((r) => r.size === 100));
+  check("todas con CRC válido", datas.every((r) => r.crcOk));
+  let mono = true;
+  for (let i = 1; i < datas.length; i++) if (datas[i].packetId <= datas[i - 1].packetId) mono = false;
+  check("packetId monotónico", mono);
+
+  const last = datas.at(-1);
+  // transform landscape-right: DSU = (-devY, +devZ, -devX) → (0, -1, 0)
+  check(
+    `accel device (0,0,-1) → DSU (0,-1,0) (got ${last?.ax.toFixed(2)},${last?.ay.toFixed(2)},${last?.az.toFixed(2)})`,
+    !!last && Math.abs(last.ax) < 0.01 && Math.abs(last.ay + 1) < 0.01 && Math.abs(last.az) < 0.01
+  );
+  // gyro device gy=90 → DSU yaw fila [0,0,1]·(0,90,0)=0... pitch [0,-1,0]·=-90
+  check(
+    `gyro device gy=90 → DSU pitch=-90 (got p${last?.pitch.toFixed(0)} y${last?.yaw.toFixed(0)} r${last?.roll.toFixed(0)})`,
+    !!last && Math.abs(last.pitch + 90) < 0.01 && Math.abs(last.yaw) < 0.01 && Math.abs(last.roll) < 0.01
+  );
+  check("timestamp del sensor pasa intacto (µs)", !!last && last.tsUs === BigInt(ts));
+
+  // /status refleja el slot activo
+  const st = await (await fetch(`http://127.0.0.1:${PORT}/status`)).json();
+  check("/status dsu con slot 0 activo", st.dsu?.listening === true && st.dsu?.slots?.["0"] != null);
+
+  udp.close();
+  ws.close();
+  await sleep(200);
 }
 
 proc.kill("SIGTERM");

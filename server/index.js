@@ -13,6 +13,7 @@ import { validateMessage, makeRateLimiter, isPrivateAddress } from "./validate.j
 import { createStickEngine } from "./stick-engine.js";
 import { createFocusWatcher } from "./focus.js";
 import { checkAccessibility, accessibilityStatus, printAccessibilityHelp } from "./accessibility.js";
+import { createDsuServer } from "./dsu/server.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3001;
@@ -28,6 +29,16 @@ console.log(`[server] keyboard backend: ${keyboard.name}`);
 
 const queue = createKeyQueue(keyboard);
 let invalidMsgs = 0;
+
+// Motion (giroscopio iPhone → emuladores vía protocolo DSU/CemuHook).
+// DSU_OFF=1 lo desactiva; DSU_HOST=0.0.0.0 lo expone a la LAN (p.ej. para
+// un Dolphin/Cemu en otra máquina).
+const dsu = process.env.DSU_OFF === "1"
+  ? null
+  : createDsuServer({
+      host: process.env.DSU_HOST || "127.0.0.1",
+      port: Number(process.env.DSU_PORT) || 26760,
+    });
 
 const players = {
   1: createPlayerState(1),
@@ -248,7 +259,8 @@ wss.on("connection", (socket, req) => {
         applyConfig(p, msg);
         break;
       case "motion":
-        // F9: dsu.updateSlot(p.num - 1, msg)
+        p.motion = true;
+        dsu?.updateSlot(p.num - 1, msg, p.orientation);
         break;
     }
   });
@@ -260,6 +272,8 @@ wss.on("connection", (socket, req) => {
     p.connected = false;
     p.socket = null;
     p.rttMs = null;
+    p.motion = false;
+    dsu?.clearSlot(p.num - 1);
     broadcastSlots();
   });
 
@@ -325,7 +339,7 @@ app.get("/status", async (req, res) => {
     ),
     queueDepth: queue.depth,
     invalidMsgs,
-    dsu: null, // F9
+    dsu: dsu ? dsu.status() : null,
   });
 });
 
