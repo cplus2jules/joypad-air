@@ -8,10 +8,14 @@ import { dirname, join } from "path";
 
 import { createKeyboard } from "./keyboard.js";
 import { MAPPINGS } from "./mappings.js";
+import { createKeyQueue } from "./key-queue.js";
+import { validateMessage, makeRateLimiter, isPrivateAddress } from "./validate.js";
+import { createStickEngine } from "./stick-engine.js";
+import { createFocusWatcher } from "./focus.js";
+import { checkAccessibility, accessibilityStatus, printAccessibilityHelp } from "./accessibility.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT) || 3000;
-const STICK_DEADZONE = 0.25;
+const PORT = Number(process.env.PORT) || 3001;
 
 const app = express();
 app.use(express.static(join(__dirname, "..", "public")));
@@ -21,6 +25,9 @@ const wss = new WebSocketServer({ server });
 
 const keyboard = await createKeyboard();
 console.log(`[server] keyboard backend: ${keyboard.name}`);
+
+const queue = createKeyQueue(keyboard);
+let invalidMsgs = 0;
 
 const players = {
   1: createPlayerState(1),
@@ -32,33 +39,50 @@ function createPlayerState(num) {
     num,
     connected: false,
     socket: null,
+    name: null,
+    theme: null,
+    orientation: "landscape-right",
+    motion: false,
     buttons: new Set(),
-    stickDirs: {
-      L: { up: false, down: false, left: false, right: false },
-      R: { up: false, down: false, left: false, right: false },
-    },
+    stickEngines: { L: createStickEngine(), R: createStickEngine() },
+    stickHeld: { L: new Set(), R: new Set() },
+    rttMs: null,
+    msgCount: 0,
+    msgsPerSec: 0,
   };
+}
+
+function displayName(p) {
+  return p.name ? `Player ${p.num} (${p.name})` : `Player ${p.num}`;
 }
 
 function releaseAllForPlayer(p) {
   const map = MAPPINGS[p.num];
   for (const btn of p.buttons) {
     const key = map.buttons[btn];
-    if (key) keyboard.up(key);
+    if (key) queue.push("up", key);
   }
   p.buttons.clear();
 
   for (const stick of ["L", "R"]) {
-    const dirs = p.stickDirs[stick];
-    for (const dir of ["up", "down", "left", "right"]) {
-      if (dirs[dir]) {
-        const key = map.sticks[stick][dir];
-        if (key) keyboard.up(key);
-        dirs[dir] = false;
-      }
+    const sMap = map.sticks[stick];
+    for (const dir of p.stickHeld[stick]) {
+      if (sMap[dir]) queue.push("up", sMap[dir]);
     }
+    p.stickHeld[stick].clear();
+    p.stickEngines[stick].reset();
   }
 }
+
+// SOCD (izq+der o arriba+abajo simultáneos en el d-pad): last-input-wins
+// sin re-press — al presionar una dirección se suelta su opuesta retenida,
+// y al soltarla NO se restaura la anterior.
+const OPPOSITES = {
+  dpad_left: "dpad_right",
+  dpad_right: "dpad_left",
+  dpad_up: "dpad_down",
+  dpad_down: "dpad_up",
+};
 
 function handleButton(p, btnName, isDown) {
   const map = MAPPINGS[p.num];
@@ -67,80 +91,245 @@ function handleButton(p, btnName, isDown) {
 
   const has = p.buttons.has(btnName);
   if (isDown && !has) {
+    const opp = OPPOSITES[btnName];
+    if (opp && p.buttons.has(opp)) {
+      p.buttons.delete(opp);
+      queue.push("up", map.buttons[opp]);
+    }
     p.buttons.add(btnName);
-    keyboard.down(key);
+    queue.push("down", key);
   } else if (!isDown && has) {
     p.buttons.delete(btnName);
-    keyboard.up(key);
+    queue.push("up", key);
   }
 }
 
 function handleStick(p, stick, x, y) {
-  const map = MAPPINGS[p.num];
-  const sMap = map.sticks[stick];
+  const sMap = MAPPINGS[p.num].sticks[stick];
   if (!sMap) return;
-  const dirs = p.stickDirs[stick];
 
-  const wantRight = x > STICK_DEADZONE;
-  const wantLeft = x < -STICK_DEADZONE;
-  const wantDown = y > STICK_DEADZONE;
-  const wantUp = y < -STICK_DEADZONE;
+  const want = p.stickEngines[stick].update(x, y);
+  const held = p.stickHeld[stick];
 
-  const apply = (dir, want) => {
-    if (want && !dirs[dir]) {
-      dirs[dir] = true;
-      keyboard.down(sMap[dir]);
-    } else if (!want && dirs[dir]) {
-      dirs[dir] = false;
-      keyboard.up(sMap[dir]);
+  // releases primero, presses después: nunca un frame con izq+der a la vez
+  for (const dir of [...held]) {
+    if (!want.has(dir)) {
+      held.delete(dir);
+      queue.push("up", sMap[dir]);
     }
-  };
-
-  apply("up", wantUp);
-  apply("down", wantDown);
-  apply("left", wantLeft);
-  apply("right", wantRight);
+  }
+  for (const dir of want) {
+    if (!held.has(dir)) {
+      held.add(dir);
+      queue.push("down", sMap[dir]);
+    }
+  }
 }
 
+function applyConfig(p, msg) {
+  if (msg.name) {
+    p.name = msg.name;
+    console.log(`[ws] Player ${p.num} se llama "${p.name}"`);
+  }
+  if (msg.theme) p.theme = msg.theme;
+  if (msg.orientation) p.orientation = msg.orientation;
+  if (msg.motion !== undefined) p.motion = msg.motion;
+  if (msg.engage !== undefined || msg.release !== undefined || msg.angularHysteresis !== undefined) {
+    p.stickEngines.L.configure(msg);
+    p.stickEngines.R.configure(msg);
+  }
+}
+
+function send(socket, obj) {
+  if (socket && socket.readyState === 1) socket.send(JSON.stringify(obj));
+}
+
+function broadcast(obj) {
+  for (const p of Object.values(players)) send(p.socket, obj);
+}
+
+function broadcastSlots() {
+  const occupied = Object.values(players)
+    .filter((p) => p.connected)
+    .map((p) => p.num);
+  broadcast({ t: "slots", occupied });
+}
+
+// ── Foco de ventana ─────────────────────────────────────────────────────────
+const focusWatcher = createFocusWatcher({
+  match: "ryujinx",
+  intervalMs: 2000,
+  isActive: () => Object.values(players).some((p) => p.connected),
+  onChange: (state) => {
+    console.log(
+      state.ok
+        ? "[focus] Ryujinx al frente ✓"
+        : `[focus] al frente: ${state.app} — las teclas NO van a Ryujinx`
+    );
+    broadcast({ t: "focus", ok: state.ok, app: state.app });
+  },
+});
+focusWatcher.start();
+
+// ── WebSocket ───────────────────────────────────────────────────────────────
 wss.on("connection", (socket, req) => {
+  const ip = req.socket.remoteAddress || "";
+  if (!isPrivateAddress(ip)) {
+    console.warn(`[ws] conexión rechazada desde IP no privada: ${ip}`);
+    socket.close(1008, "solo LAN");
+    return;
+  }
+
   const url = new URL(req.url, "http://x");
   const playerNum = url.searchParams.get("p") === "2" ? 2 : 1;
   const p = players[playerNum];
 
-  if (p.connected) {
-    p.socket?.close();
+  // Takeover de slot: soltar las teclas del cliente viejo ANTES de reasignar.
+  // Sus handlers close/error comprueban identidad de socket y ya no tocarán
+  // el estado del nuevo.
+  if (p.connected && p.socket && p.socket !== socket) {
+    const old = p.socket;
     releaseAllForPlayer(p);
+    old.close(4000, "reemplazado por otro mando");
   }
 
   p.connected = true;
   p.socket = socket;
-  console.log(`[ws] Player ${playerNum} conectado`);
+  socket.isAlive = true;
+  const allowed = makeRateLimiter(300);
+  console.log(`[ws] ${displayName(p)} conectado desde ${ip}`);
 
-  socket.send(JSON.stringify({ t: "hello", player: playerNum }));
+  send(socket, {
+    t: "hello",
+    player: playerNum,
+    kb: keyboard.name,
+    native: keyboard.isNative,
+    accessibility: accessibilityStatus(),
+    focus: focusWatcher.last,
+  });
+  broadcastSlots();
+
+  socket.on("pong", () => {
+    socket.isAlive = true;
+  });
 
   socket.on("message", (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(raw.toString());
-    } catch {
+    if (!allowed()) {
+      console.warn(`[ws] ${displayName(p)} supera el rate limit — cerrando`);
+      socket.close(1008, "rate limit");
       return;
     }
-    if (msg.t === "btn") handleButton(p, msg.k, !!msg.d);
-    else if (msg.t === "stick") handleStick(p, msg.s, msg.x ?? 0, msg.y ?? 0);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw.toString());
+    } catch {
+      invalidMsgs++;
+      return;
+    }
+    const msg = validateMessage(parsed, MAPPINGS[p.num]);
+    if (!msg) {
+      invalidMsgs++;
+      return;
+    }
+    p.msgCount++;
+
+    switch (msg.t) {
+      case "btn":
+        handleButton(p, msg.k, msg.d);
+        break;
+      case "stick":
+        handleStick(p, msg.s, msg.x, msg.y);
+        break;
+      case "ping":
+        if (msg.rtt !== undefined) p.rttMs = msg.rtt;
+        send(socket, { t: "pong", ts: msg.ts });
+        break;
+      case "config":
+        applyConfig(p, msg);
+        break;
+      case "motion":
+        // F9: dsu.updateSlot(p.num - 1, msg)
+        break;
+    }
   });
 
   socket.on("close", () => {
-    console.log(`[ws] Player ${playerNum} desconectado`);
+    if (p.socket !== socket) return; // socket viejo tras un takeover
+    console.log(`[ws] ${displayName(p)} desconectado`);
     releaseAllForPlayer(p);
     p.connected = false;
     p.socket = null;
+    p.rttMs = null;
+    broadcastSlots();
   });
 
   socket.on("error", (err) => {
-    console.error(`[ws] Player ${playerNum} error:`, err.message);
+    console.error(`[ws] ${displayName(p)} error:`, err.message);
+    if (p.socket !== socket) return;
+    releaseAllForPlayer(p);
   });
 });
 
+// Heartbeat: detecta iPhones muertos (WiFi off, batería, app matada) y suelta
+// sus teclas en ≤10s aunque el TCP nunca llegue a cerrar limpiamente.
+const heartbeat = setInterval(() => {
+  for (const socket of wss.clients) {
+    if (socket.isAlive === false) {
+      socket.terminate(); // dispara close → releaseAllForPlayer
+      continue;
+    }
+    socket.isAlive = false;
+    socket.ping();
+  }
+}, 5000);
+heartbeat.unref?.();
+
+// Tasa de mensajes (ventana de 5s) para /status
+const rateTick = setInterval(() => {
+  for (const p of Object.values(players)) {
+    p.msgsPerSec = Math.round(p.msgCount / 5);
+    p.msgCount = 0;
+  }
+}, 5000);
+rateTick.unref?.();
+
+// ── Estado ──────────────────────────────────────────────────────────────────
+app.get("/status", async (req, res) => {
+  if (req.query.refresh === "1") await checkAccessibility();
+  res.set("Access-Control-Allow-Origin", "*");
+  res.json({
+    app: "switch-controller",
+    v: 1,
+    backend: keyboard.name,
+    native: keyboard.isNative,
+    accessibility: accessibilityStatus(),
+    focusApp: focusWatcher.last?.app ?? null,
+    ryujinxFocused: focusWatcher.last?.ok ?? null,
+    players: Object.fromEntries(
+      Object.values(players).map((p) => [
+        p.num,
+        {
+          connected: p.connected,
+          name: p.name,
+          theme: p.theme,
+          motion: p.motion,
+          rttMs: p.rttMs,
+          msgsPerSec: p.msgsPerSec,
+          heldButtons: [...p.buttons],
+          stickDirs: {
+            L: [...p.stickHeld.L],
+            R: [...p.stickHeld.R],
+          },
+        },
+      ])
+    ),
+    queueDepth: queue.depth,
+    invalidMsgs,
+    dsu: null, // F9
+  });
+});
+
+// ── Arranque ────────────────────────────────────────────────────────────────
 function getLocalIPs() {
   const ips = [];
   const nets = networkInterfaces();
@@ -154,11 +343,16 @@ function getLocalIPs() {
   return ips;
 }
 
+const accessibilityOk = await checkAccessibility();
+if (keyboard.isNative && accessibilityOk === false) {
+  printAccessibilityHelp();
+}
+
 server.listen(PORT, "0.0.0.0", () => {
   const ips = getLocalIPs();
   console.log("");
-  console.log("Switch Controller corriendo");
-  console.log("=================================");
+  console.log("El Control Super Pro Max — servidor corriendo");
+  console.log("=============================================");
   if (ips.length === 0) {
     console.log(`Servidor en http://localhost:${PORT}`);
     console.log("(no se detectaron interfaces de red — conecta el Mac a WiFi)");
@@ -176,12 +370,16 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log("  2. Compartir -> Agregar a pantalla de inicio");
   console.log("  3. Abre la app desde el icono, elige Player 1 o Player 2");
   console.log("");
-  console.log("Mapeo de teclas para Ryujinx: ver README.md");
+  console.log(`Estado del servidor: http://localhost:${PORT}/status`);
+  console.log("Mapeo de teclas para Ryujinx: npm run ryujinx:setup (ver README.md)");
   console.log("Ctrl+C para detener");
 });
 
-process.on("SIGINT", () => {
+async function shutdown() {
   console.log("\nLiberando teclas y cerrando...");
   for (const p of Object.values(players)) releaseAllForPlayer(p);
+  await Promise.race([queue.flush(), new Promise((r) => setTimeout(r, 500))]);
   process.exit(0);
-});
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
