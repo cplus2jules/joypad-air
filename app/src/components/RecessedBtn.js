@@ -3,7 +3,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { C } from '../theme';
-import { depth, getRepeatMs, repeatPulse } from '../haptics';
+import { depth } from '../haptics';
 import { playClick } from '../sound';
 import usePressAnimation from './usePressAnimation';
 
@@ -18,7 +18,6 @@ import usePressAnimation from './usePressAnimation';
 // el visual. Solo aplica en modo autónomo.
 export default function RecessedBtn({ name, label, send, style, textStyle, h = 'medium', pressed, slop }) {
   const { scale, pressY, glowOpacity, animateIn, animateOut } = usePressAnimation();
-  const repeatRef = useRef(null);
   const pressedRef = useRef(false);
   const controlled = pressed !== undefined;
 
@@ -26,6 +25,8 @@ export default function RecessedBtn({ name, label, send, style, textStyle, h = '
   const depthIn  = { medium: depth.buttonIn,  heavy: depth.triggerIn,  light: depth.shoulderIn,  select: depth.dpadIn  }[h] || depth.buttonIn;
   const depthOut = { medium: depth.buttonOut, heavy: depth.triggerOut, light: depth.shoulderOut, select: depth.dpadOut }[h] || depth.buttonOut;
 
+  // NOTA: el repeat háptico de ZL/ZR vive en ShoulderCluster (los
+  // shoulders/triggers ya no usan el modo autónomo de este botón).
   const doPressIn = () => {
     if (pressedRef.current) return;
     pressedRef.current = true;
@@ -33,18 +34,10 @@ export default function RecessedBtn({ name, label, send, style, textStyle, h = '
     depthIn();
     animateIn();
     send({ t: 'btn', k: name, d: true });
-    if (h === 'heavy') {
-      const ms = getRepeatMs(); // 140 normal/suave · 100 fuerte · 0 = off
-      if (ms > 0) repeatRef.current = setInterval(repeatPulse, ms);
-    }
   };
   const doPressOut = () => {
     if (!pressedRef.current) return;
     pressedRef.current = false;
-    if (repeatRef.current) {
-      clearInterval(repeatRef.current);
-      repeatRef.current = null;
-    }
     depthOut();
     animateOut();
     send({ t: 'btn', k: name, d: false });

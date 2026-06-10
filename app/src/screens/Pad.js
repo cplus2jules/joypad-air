@@ -12,6 +12,7 @@ import { setClickEnabled } from '../sound';
 import { useConnection } from '../net/connection';
 import { useSettings } from '../store/settings';
 import RecessedBtn from '../components/RecessedBtn';
+import ShoulderCluster from '../components/ShoulderCluster';
 import { SymbolBtn, CaptureBtn, HomeBtn } from '../components/SymbolButtons';
 import Stick from '../components/Stick';
 import DPad from '../components/DPad';
@@ -98,10 +99,16 @@ function SidewaysLeft({ send, theme, profile }) {
         style={StyleSheet.absoluteFill}
       />
       {/* shoulders on top */}
-      <View style={s.swShoulders}>
-        <RecessedBtn name="sl" label="SL" send={send} h="light" style={s.swShoulder} textStyle={s.shoulderText} />
-        <RecessedBtn name="sr" label="SR" send={send} h="light" style={s.swShoulder} textStyle={s.shoulderText} />
-      </View>
+      <ShoulderCluster
+        style={s.swShoulders}
+        send={send}
+        buttons={[
+          { name: 'sl', label: 'SL', kind: 'shoulder' },
+          { name: 'sr', label: 'SR', kind: 'shoulder' },
+        ]}
+        btnStyle={s.swShoulder}
+        textStyle={s.shoulderText}
+      />
 
       {/* face buttons (dpad acting as faces) on left — superficie unificada
           con rolling, misma colocación que los 4 botones de antes */}
@@ -145,10 +152,16 @@ function SidewaysRight({ send, theme, profile }) {
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={s.swShoulders}>
-        <RecessedBtn name="sl" label="SL" send={send} h="light" style={s.swShoulder} textStyle={s.shoulderText} />
-        <RecessedBtn name="sr" label="SR" send={send} h="light" style={s.swShoulder} textStyle={s.shoulderText} />
-      </View>
+      <ShoulderCluster
+        style={s.swShoulders}
+        send={send}
+        buttons={[
+          { name: 'sl', label: 'SL', kind: 'shoulder' },
+          { name: 'sr', label: 'SR', kind: 'shoulder' },
+        ]}
+        btnStyle={s.swShoulder}
+        textStyle={s.shoulderText}
+      />
 
       {/* stick on left */}
       <View style={s.swStickLeft}>
@@ -191,10 +204,16 @@ function LeftJoycon({ send, compact, theme, profile }) {
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={s.shoulderBarLeft}>
-        <RecessedBtn name="zl" label="ZL" send={send} h="heavy" style={s.shoulder} textStyle={s.shoulderText} />
-        <RecessedBtn name="l"  label="L"  send={send} h="light"  style={s.shoulder} textStyle={s.shoulderText} />
-      </View>
+      <ShoulderCluster
+        style={s.shoulderBarLeft}
+        send={send}
+        buttons={[
+          { name: 'zl', label: 'ZL', kind: 'trigger' },
+          { name: 'l', label: 'L', kind: 'shoulder' },
+        ]}
+        btnStyle={s.shoulder}
+        textStyle={s.shoulderText}
+      />
 
       <View style={s.joyconInner}>
         <View style={s.cornerTopRight}>
@@ -234,10 +253,16 @@ function RightJoycon({ send, compact, theme, profile }) {
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={s.shoulderBarRight}>
-        <RecessedBtn name="r"  label="R"  send={send} h="light"  style={s.shoulder} textStyle={s.shoulderText} />
-        <RecessedBtn name="zr" label="ZR" send={send} h="heavy" style={s.shoulder} textStyle={s.shoulderText} />
-      </View>
+      <ShoulderCluster
+        style={s.shoulderBarRight}
+        send={send}
+        buttons={[
+          { name: 'r', label: 'R', kind: 'shoulder' },
+          { name: 'zr', label: 'ZR', kind: 'trigger' },
+        ]}
+        btnStyle={s.shoulder}
+        textStyle={s.shoulderText}
+      />
 
       <View style={s.joyconInner}>
         <View style={s.cornerTopLeft}>
