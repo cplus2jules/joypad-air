@@ -37,10 +37,11 @@ export default function FaceButtons({ send, big, swap }) {
               send={send}
               style={btnStyle}
               textStyle={txtStyle}
-              // ±8 (no ±12): los botones se tocan en diagonal — con slop
-              // mayor crece la zona ambigua de esquina donde dos handlers
-              // compiten por el mismo touch.
-              slop={8}
+              // ±4 con el rombo compacto de 132: el hueco diagonal entre
+              // botones quedó en ~8px — un slop mayor crea zona ambigua
+              // donde dos handlers compiten por el mismo touch (phantom
+              // press). El botón ya mide 50pt (objetivo táctil suficiente).
+              slop={4}
             />
           </View>
         );
@@ -50,15 +51,16 @@ export default function FaceButtons({ send, big, swap }) {
 }
 
 const s = StyleSheet.create({
-  // ABXY — tamaño que calza con stick
-  face: { width: 150, height: 150 },
+  // ABXY — rombo compacto (132: botones de 50 con hueco de 32, como el
+  // diamante físico; feedback de David en device, 2026-06-10)
+  face: { width: 132, height: 132 },
   faceSlot: { position: 'absolute', width: 50, height: 50 },
   faceBtn:  { width: 50, height: 50, borderRadius: 25 },
   faceText: { fontSize: 18, color: '#fff', fontWeight: '700' },
-  faceX: { top: 0,    left: 50 },
-  faceY: { top: 50,   left: 0  },
-  faceA: { top: 50,   right: 0 },
-  faceB: { bottom: 0, left: 50 },
+  faceX: { top: 0,    left: 41 },
+  faceY: { top: 41,   left: 0  },
+  faceA: { top: 41,   right: 0 },
+  faceB: { bottom: 0, left: 41 },
   // ABXY BIG — modo compact, gigantes
   faceBig: { width: 260, height: 260 },
   faceSlotBig: { position: 'absolute', width: 86, height: 86 },

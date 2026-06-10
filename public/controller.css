@@ -34,6 +34,9 @@ html, body {
   height: 100%;
   width: 100%;
   background: var(--bg);
+  /* Safari con barra visible: dvh sigue el viewport VISIBLE — la barra de
+     navegación ya no tapa los controles inferiores */
+  height: 100dvh;
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
   overflow: hidden;
@@ -179,6 +182,20 @@ button {
 .dot.busy { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
 
 .picker-hint { font-size: 12px; color: #6c7384; max-width: 420px; margin: 0; z-index: 1; }
+
+/* En una pestaña de Safari (no standalone): la guía de pantalla completa
+   se vuelve protagonista — es la única forma de quitar la barra en iOS */
+.picker-hint.coach {
+  font-size: 13px;
+  color: #0b0d12;
+  background: rgba(250, 200, 60, 0.95);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+.picker-hint.coach b { font-weight: 800; }
 .picker-gear { position: absolute; top: max(10px, env(safe-area-inset-top, 0px)); right: max(14px, var(--safe-r)); z-index: 2; }
 
 /* Toast del picker (aviso temporal: «Otro mando tomó tu slot») */

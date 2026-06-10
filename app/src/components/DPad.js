@@ -42,11 +42,13 @@ const SECTORS = [
 ];
 
 export default function DPad({ send, variant = 'vertical' }) {
-  const SIZE = variant === 'sideways' ? 240 : 150;
+  // Vertical: 132 (no 150) — botones de 50 con hueco central de 32: cruz
+  // compacta como el d-pad físico (feedback de David en device, 2026-06-10)
+  const SIZE = variant === 'sideways' ? 240 : 132;
   const BTN = variant === 'sideways' ? 78 : 50;
   const CENTER = SIZE / 2;
-  // < 14px del centro (en footprint 150) → neutral; escala con el tamaño
-  const NEUTRAL_R = 14 * (SIZE / 150);
+  // < 14px del centro (en footprint base) → neutral; escala con el tamaño
+  const NEUTRAL_R = 14 * (SIZE / 132);
   const map = MAPS[variant] || MAPS.vertical;
 
   const activeRef = useRef(new Set());

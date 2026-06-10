@@ -1125,9 +1125,32 @@ document.addEventListener("touchend", (e) => {
 }, { passive: false });
 
 // ─── Init ───────────────────────────────────────────────────────────────────
+// Standalone = lanzada desde el icono de pantalla de inicio (sin barra de
+// Safari). En una pestaña normal la barra NO se puede ocultar por código en
+// iPhone — lo único que funciona es guiar a "Agregar a pantalla de inicio".
+const isStandalone =
+  navigator.standalone === true ||
+  matchMedia("(display-mode: standalone)").matches ||
+  matchMedia("(display-mode: fullscreen)").matches;
+
+function setupFullscreenCoach() {
+  const hint = document.querySelector(".picker-hint");
+  if (!hint) return;
+  if (isStandalone) {
+    hint.hidden = true; // ya está a pantalla completa: la guía sobra
+    return;
+  }
+  hint.classList.add("coach");
+  hint.innerHTML =
+    "📱 La barra de Safari solo desaparece instalando el mando: " +
+    "toca <b>Compartir</b> (▢↑) → <b>«Agregar a pantalla de inicio»</b> " +
+    "y ábrelo desde el icono.";
+}
+
 function init() {
   applyTheme(settings.theme);
   initHaptics(settings.haptics);
+  setupFullscreenCoach();
 
   // pad
   createStick($("#stick-l"), "L");
