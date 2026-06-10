@@ -97,21 +97,11 @@ function SidewaysLeft({ send, theme, profile }) {
         <RecessedBtn name="sr" label="SR" send={send} h="light" style={s.swShoulder} textStyle={s.shoulderText} />
       </View>
 
-      {/* face buttons (dpad acting as faces) on left */}
+      {/* face buttons (dpad acting as faces) on left — superficie unificada
+          con rolling, misma colocación que los 4 botones de antes */}
       <View style={s.swFaceLeft}>
-        <View style={[s.swFace, btnScale]}>
-          <View style={[s.swFaceSlot, s.swFaceTop]}>
-            <RecessedBtn name="dpad_left" label="◀" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
-          </View>
-          <View style={[s.swFaceSlot, s.swFaceLeftPos]}>
-            <RecessedBtn name="dpad_down" label="▼" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
-          </View>
-          <View style={[s.swFaceSlot, s.swFaceRightPos]}>
-            <RecessedBtn name="dpad_up" label="▲" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
-          </View>
-          <View style={[s.swFaceSlot, s.swFaceBottom]}>
-            <RecessedBtn name="dpad_right" label="▶" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
-          </View>
+        <View style={btnScale}>
+          <DPad send={send} variant="sideways" />
         </View>
       </View>
 
