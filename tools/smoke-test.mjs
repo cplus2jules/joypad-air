@@ -115,7 +115,7 @@ console.log("\n[3] server integrado: ws + validación + SOCD + takeover + /statu
 let serverLog = "";
 const proc = spawn("node", ["server/index.js"], {
   cwd: ROOT,
-  env: { ...process.env, FORCE_LOG: "1", PORT: String(PORT) },
+  env: { ...process.env, FORCE_LOG: "1", PORT: String(PORT), GYRO_GAIN: "1" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 proc.stdout.on("data", (d) => { serverLog += d.toString(); });
@@ -302,7 +302,30 @@ console.log("\n[4] DSU: ws motion → data responses con transformación de ejes
     `gyro device gy=90 → DSU pitch=-90 (got p${last?.pitch.toFixed(0)} y${last?.yaw.toFixed(0)} r${last?.roll.toFixed(0)})`,
     !!last && Math.abs(last.pitch + 90) < 0.01 && Math.abs(last.yaw) < 0.01 && Math.abs(last.roll) < 0.01
   );
-  check("timestamp del sensor pasa intacto (µs)", !!last && last.tsUs === BigInt(ts));
+  // El server debe propagar el ts EXACTO del sensor (sin corromperlo). No
+  // comparamos con el último ts enviado — hay race entre el feed WS y la
+  // emisión UDP — sino que sea uno de la serie 1_000_000 + k·16666.
+  check(
+    "timestamp del sensor pasa intacto (µs)",
+    !!last && last.tsUs >= 1_000_000n && (last.tsUs - 1_000_000n) % 16_666n === 0n
+  );
+
+  // roll INVERTIDO (volante MK8): gx=90 device → roll +90 (la matriz vieja
+  // daba -90). Con GYRO_GAIN=1 en el server de test, el valor es exacto.
+  responses.length = 0;
+  const dataTick2 = setInterval(() => udp.send(encodeDataRequest(0, 0)), 16);
+  const feedTick2 = setInterval(() => {
+    ts += 16_666;
+    ws.send(JSON.stringify({ t: "motion", ax: 0, ay: 0, az: -1, gx: 90, gy: 0, gz: 0, ts }));
+  }, 16);
+  await sleep(400);
+  clearInterval(feedTick2);
+  clearInterval(dataTick2);
+  const rollSample = responses.filter((r) => r.type === MSG.DATA).at(-1);
+  check(
+    `roll invertido: gx=90 → roll +90 (got ${rollSample?.roll.toFixed(0)})`,
+    !!rollSample && Math.abs(rollSample.roll - 90) < 0.01
+  );
 
   // /status refleja el slot activo
   const st = await (await fetch(`http://127.0.0.1:${PORT}/status`)).json();

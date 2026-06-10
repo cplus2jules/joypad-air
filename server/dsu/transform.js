@@ -5,32 +5,46 @@
 // +Z saliendo de la pantalla). La convención CemuHook (heredada del DS4):
 // mando plano sobre la mesa, botones arriba ⇒ accel = (0, -1, 0) g.
 //
-// Las matrices son hipótesis iniciales DISEÑADAS PARA AJUSTARSE con la
-// calibración física de 6 poses (tools/dsu-test-client.mjs --pose) — solo
-// valores ∈ {-1, 0, 1}, una matriz por orientación de pantalla. El gyro usa
-// la misma rotación que el accel (det = +1).
+// Hay DOS matrices por orientación: una para el acelerómetro (ancla la
+// gravedad — no se toca, plano boca arriba debe dar az = -1) y otra para el
+// giroscopio (sentido de cada rotación). Separadas a propósito: así se puede
+// invertir el sentido de una rotación (p.ej. el roll = volante de Mario Kart)
+// sin desestabilizar la corrección de gravedad del filtro de Ryujinx.
 //
-// Entrada del app (marco device, ya convertida de unidades):
-//   ax/ay/az en g · gx/gy/gz en °/s (gx = rate sobre X device, etc.)
-// Salida DSU:
-//   accel {x,y,z} en g · gyro {pitch (sobre X), yaw (sobre Y), roll (sobre Z)}
+// GYRO_GAIN amplifica la respuesta: >1 = gira más con menos inclinación
+// física (Mario Kart se sentía "hay que girar demasiado el teléfono").
+//
+// Salida DSU gyro: { pitch (sobre X), yaw (sobre Y), roll (sobre Z) }.
+// El roll va NEGADO respecto al accel en cada orientación → el volante de
+// MK8 gira en el sentido natural (antes iba al revés).
+
+const GYRO_GAIN = Number(process.env.GYRO_GAIN) || 2.2;
 
 const TRANSFORMS = {
   // top del iPhone hacia la IZQUIERDA del jugador
   "landscape-right": {
-    // filas = ejes DSU [x, y, z] expresados en ejes device [x, y, z]
-    m: [
-      [0, -1, 0], // DSU x (derecha del jugador)  = -Y device
-      [0, 0, 1],  // DSU y (plano⇒-1g)            = +Z device
-      [-1, 0, 0], // DSU z (hacia el jugador)     = -X device
+    accel: [
+      [0, -1, 0], // DSU x (derecha del jugador) = -Y device
+      [0, 0, 1],  // DSU y (plano ⇒ -1g)         = +Z device
+      [-1, 0, 0], // DSU z (hacia el jugador)    = -X device
+    ],
+    gyro: [
+      [0, -1, 0], // pitch
+      [0, 0, 1],  // yaw
+      [1, 0, 0],  // roll INVERTIDO (era -1) → volante en sentido natural
     ],
   },
   // top del iPhone hacia la DERECHA del jugador
   "landscape-left": {
-    m: [
+    accel: [
       [0, 1, 0],
       [0, 0, 1],
       [1, 0, 0],
+    ],
+    gyro: [
+      [0, 1, 0],
+      [0, 0, 1],
+      [-1, 0, 0], // roll INVERTIDO (era +1)
     ],
   },
 };
@@ -47,7 +61,13 @@ function applyMatrix(m, v) {
 // devuelve: { ax, ay, az, pitch, yaw, roll, tsUs } (marco DSU)
 export function toDsuFrame(sample, orientation = "landscape-right") {
   const t = TRANSFORMS[orientation] ?? TRANSFORMS["landscape-right"];
-  const [ax, ay, az] = applyMatrix(t.m, [sample.ax, sample.ay, sample.az]);
-  const [pitch, yaw, roll] = applyMatrix(t.m, [sample.gx, sample.gy, sample.gz]);
-  return { ax, ay, az, pitch, yaw, roll, tsUs: sample.ts };
+  const [ax, ay, az] = applyMatrix(t.accel, [sample.ax, sample.ay, sample.az]);
+  const [pitch, yaw, roll] = applyMatrix(t.gyro, [sample.gx, sample.gy, sample.gz]);
+  return {
+    ax, ay, az,
+    pitch: pitch * GYRO_GAIN,
+    yaw: yaw * GYRO_GAIN,
+    roll: roll * GYRO_GAIN,
+    tsUs: sample.ts,
+  };
 }
