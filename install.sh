@@ -1,7 +1,7 @@
 #!/bin/bash
 # Instalador de El Control Super Pro Max (joypad-air) para macOS.
 #
-#   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/USER/joypad-air/main/install.sh)"
+#   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mindavidev/joypad-air/main/install.sh)"
 #
 # Qué hace (idempotente, sin sudo):
 #   1. Comprueba Node ≥18; si falta, descarga el instalador OFICIAL de
@@ -15,7 +15,10 @@
 
 set -euo pipefail
 
-PKG_NAME="joypad-air"
+# Mientras el paquete no esté publicado en npm, npx lo ejecuta directo
+# desde GitHub (resuelve la rama main en cada arranque = auto-update).
+# Cuando se publique en npm, cambiar a: joypad-air@latest  (ver RELEASING.md)
+PKG_SPEC="github:mindavidev/joypad-air"
 LAUNCHER="$HOME/Desktop/🎮 El Control.command"
 NODE_LTS_LINE="v22.x"
 
@@ -73,7 +76,7 @@ clear
 echo "🎮 El Control Super Pro Max"
 echo "Arrancando (la primera vez tarda un poco)…"
 echo
-npx -y ${PKG_NAME}@latest
+npx -y ${PKG_SPEC}
 EOF
   chmod +x "$LAUNCHER"
   # creado localmente → sin atributo de cuarentena → Gatekeeper no molesta
