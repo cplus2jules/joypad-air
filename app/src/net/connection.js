@@ -30,10 +30,13 @@ const INITIAL_SERVER_INFO = {
 // Estados: 'conectando' | 'conectado' | 'error' | 'sin host' | 'reconectando'
 // `profile` (opcional): perfil activo de settings — name/themeId/engage/release
 // viajan en el mensaje config y se reenvían en vivo si cambian.
+// `opts` (opcional): { motion, orientation } — estado de sesión del Pad
+// (GIRO activo, 'landscape-left'|'landscape-right'); también van en el
+// config y se reenvían en vivo.
 // Devuelve { status, send, rtt, serverInfo }:
 //   rtt        — latencia suavizada en ms (EMA 0.6/0.4) o null sin dato
 //   serverInfo — ver INITIAL_SERVER_INFO, actualizado por el dispatcher
-export function useConnection(player, profile) {
+export function useConnection(player, profile, opts) {
   const wsRef = useRef(null);
   const [status, setStatus] = useState('conectando');
   const [rtt, setRtt] = useState(null);
@@ -45,11 +48,15 @@ export function useConnection(player, profile) {
   const themeId = profile?.themeId ?? 'neon';
   const engage = profile?.engage ?? 0.55;
   const release = profile?.release ?? 0.40;
+  const motion = opts?.motion;
+  const orientation = opts?.orientation;
 
   // Ref con el config vigente — el onopen lo lee fresco sin
   // reconectar el socket cada vez que cambia un slider.
   const cfgRef = useRef(null);
   cfgRef.current = { name, theme: themeId, engage, release };
+  if (motion !== undefined) cfgRef.current.motion = !!motion;
+  if (orientation) cfgRef.current.orientation = orientation;
 
   const sendConfig = () => {
     const ws = wsRef.current;
@@ -173,7 +180,7 @@ export function useConnection(player, profile) {
   useEffect(() => {
     sendConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, themeId, engage, release]);
+  }, [name, themeId, engage, release, motion, orientation]);
 
   const send = (obj) => {
     const ws = wsRef.current;

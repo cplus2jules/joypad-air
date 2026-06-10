@@ -10,8 +10,11 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useBatteryLevel } from 'expo-battery';
+import { DeviceMotion } from 'expo-sensors';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
 import { haptic, setIntensity } from '../haptics';
+import { publishMotionSample } from '../motion';
 import { setClickEnabled } from '../sound';
 import { detectHost, SERVER_PORT, useConnection } from '../net/connection';
 import { useSettings } from '../store/settings';
@@ -27,6 +30,7 @@ import FaceButtons, { mapFaceName } from '../components/FaceButtons';
 
 const TOPBAR_H = 40;
 const AMBER = '#faa005';
+const G_MS2 = 9.80665; // 1 g en m/s² — DeviceMotion entrega m/s²
 
 // ── Punto de latencia (junto al status) ─────────────────
 // 6px: verde <25ms / ámbar <60 / rojo ≥60 / gris sin dato.
@@ -100,7 +104,13 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
   const { settings, update } = useSettings();
   const profile = settings.profiles[player] ?? settings.profiles[1];
   const theme = useMemo(() => resolveTheme(profile.themeId), [profile.themeId]);
-  const { status, send, rtt, serverInfo } = useConnection(player, profile);
+  // GIRO: estado de SESIÓN (no persiste) — apagado por default
+  const [motionOn, setMotionOn] = useState(false);
+  const [orientation, setOrientation] = useState('landscape-right');
+  const { status, send, rtt, serverInfo } = useConnection(player, profile, {
+    motion: motionOn,
+    orientation,
+  });
   const host = useMemo(() => detectHost(), []);
   const battery = useBatteryLevel(); // 0..1, o -1 mientras no hay dato
   const batteryLow = battery >= 0 && battery < 0.2;
@@ -111,6 +121,75 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
     if (serverInfo.hello && !settings.onboarded) update({ onboarded: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverInfo.hello]);
+
+  // Orientación física actual → viaja en el config (el server la usa
+  // para remapear los ejes del motion según cómo se sujeta el teléfono)
+  useEffect(() => {
+    const map = (o) =>
+      o === ScreenOrientation.Orientation.LANDSCAPE_LEFT ? 'landscape-left'
+      : o === ScreenOrientation.Orientation.LANDSCAPE_RIGHT ? 'landscape-right'
+      : null;
+    ScreenOrientation.getOrientationAsync()
+      .then((o) => {
+        const m = map(o);
+        if (m) setOrientation(m);
+      })
+      .catch(() => {});
+    const sub = ScreenOrientation.addOrientationChangeListener((e) => {
+      const m = map(e.orientationInfo?.orientation);
+      if (m) setOrientation(m);
+    });
+    return () => ScreenOrientation.removeOrientationChangeListener(sub);
+  }, []);
+
+  // GIRO activo → DeviceMotion a 16ms enviando {t:'motion'} al server.
+  // Convención CoreMotion (gyro °/s, accel en g; plano boca arriba ⇒
+  // az ≈ -1): en Expo iOS la división entre 9.80665 ya la respeta —
+  // NO invertir signos (la verificación física es la fila de debug).
+  useEffect(() => {
+    if (!motionOn) return undefined;
+    let lastDebug = 0;
+    DeviceMotion.setUpdateInterval(16);
+    const sub = DeviceMotion.addListener((data) => {
+      const acc = data.accelerationIncludingGravity;
+      const rot = data.rotationRate;
+      if (!acc || !rot) return;
+      const msg = {
+        t: 'motion',
+        gx: rot.beta ?? 0,  // °/s — eje X
+        gy: rot.gamma ?? 0, // °/s — eje Y
+        gz: rot.alpha ?? 0, // °/s — eje Z
+        ax: (acc.x ?? 0) / G_MS2,
+        ay: (acc.y ?? 0) / G_MS2,
+        az: (acc.z ?? 0) / G_MS2,
+        ts: Math.round((globalThis.performance?.now?.() ?? Date.now()) * 1000), // µs monotónico
+      };
+      send(msg);
+      // Muestra de debug para Settings a ~10Hz (no a 60)
+      const now = Date.now();
+      if (now - lastDebug >= 100) {
+        lastDebug = now;
+        publishMotionSample({ ax: msg.ax, ay: msg.ay, az: msg.az });
+      }
+    });
+    return () => {
+      sub.remove();
+      publishMotionSample(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motionOn]);
+
+  const toggleMotion = async () => {
+    haptic.light();
+    if (motionOn) {
+      setMotionOn(false);
+      return;
+    }
+    try {
+      const res = await DeviceMotion.requestPermissionsAsync();
+      if (res?.granted) setMotionOn(true);
+    } catch {}
+  };
 
   // Aviso accionable del server (prioridad: accesibilidad > foco).
   // Solo con hello recibido y conectado — sin socket manda el overlay
@@ -171,14 +250,27 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
         {batteryLow && (
           <Text style={s.batteryLow}>🪫 {Math.round(battery * 100)}%</Text>
         )}
-        <Pressable
-          onPress={() => { haptic.light(); onToggleCompact(); }}
-          style={s.compactToggle}
-        >
-          <Text style={[s.compactToggleText, compact && { color: '#5ad07a' }]}>
-            {compact ? '◧ MAX' : '⊞ MIN'}
-          </Text>
-        </Pressable>
+        <View style={s.topRightRow}>
+          <Pressable
+            onPress={toggleMotion}
+            style={[
+              s.compactToggle,
+              motionOn && { borderColor: accent, backgroundColor: 'rgba(255,255,255,0.10)' },
+            ]}
+          >
+            <Text style={[s.compactToggleText, motionOn && { color: accent }]}>
+              ∿ GIRO
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => { haptic.light(); onToggleCompact(); }}
+            style={s.compactToggle}
+          >
+            <Text style={[s.compactToggleText, compact && { color: '#5ad07a' }]}>
+              {compact ? '◧ MAX' : '⊞ MIN'}
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={s.body}>
@@ -478,9 +570,14 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  compactToggle: {
+  topRightRow: {
     position: 'absolute',
     right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compactToggle: {
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 8,

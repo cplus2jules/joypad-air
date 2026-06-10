@@ -23,7 +23,13 @@
     },
     "plugins": [
       "expo-asset",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "El mando usa el giroscopio para los controles de movimiento (apuntar, girar) en el emulador."
+        }
+      ]
     ]
   }
 }

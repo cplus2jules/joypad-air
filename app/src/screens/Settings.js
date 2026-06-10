@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { C, JOYCON_THEMES, resolveTheme } from '../theme';
 import { haptic, depth, setIntensity } from '../haptics';
+import { useMotionSample } from '../motion';
 import { useSettings } from '../store/settings';
 
 const HAPTIC_LEVELS = [
@@ -25,6 +27,8 @@ const MIN_RELEASE = 0.10;
 const RELEASE_GAP = 0.05;
 const round2 = (v) => Math.round(v * 100) / 100;
 const pct = (v) => `${Math.round(v * 100)}%`;
+// Acelerómetro en g con signo explícito (calibración física del GIRO)
+const fmtG = (v) => (v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2));
 
 // ── Sub-piezas ──────────────────────────────────────────
 function SectionLabel({ children }) {
@@ -161,6 +165,8 @@ function ToggleRow({ label, value, accent, onChange }) {
 export default function Settings({ initialSlot = 1, onClose }) {
   const { settings, updateProfile } = useSettings();
   const [slot, setSlot] = useState(initialSlot === 2 ? 2 : 1);
+  // Muestra en vivo del acelerómetro — solo existe con GIRO activo en el Pad
+  const motionSample = useMotionSample();
   const profile = settings.profiles[slot];
   const theme = useMemo(() => resolveTheme(profile.themeId), [profile.themeId]);
   const accent = slot === 1 ? theme.accentL : theme.accentR;
@@ -351,6 +357,18 @@ export default function Settings({ initialSlot = 1, onClose }) {
               onChange={(v) => updateProfile(slot, { clickSound: v })}
             />
           </View>
+
+          {motionSample && (
+            <>
+              <SectionLabel>Giroscopio</SectionLabel>
+              <View style={s.card}>
+                <Text style={s.motionMono}>
+                  {`ax ${fmtG(motionSample.ax)}   ay ${fmtG(motionSample.ay)}   az ${fmtG(motionSample.az)}`}
+                </Text>
+                <Text style={s.motionLegend}>plano boca arriba ⇒ az ≈ -1.00</Text>
+              </View>
+            </>
+          )}
         </ScrollView>
       </View>
     </View>
@@ -558,6 +576,20 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 7,
+  },
+
+  // Debug del giroscopio (acelerómetro en g)
+  motionMono: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    paddingVertical: 4,
+  },
+  motionLegend: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 10,
+    paddingBottom: 4,
   },
 
   // Chips de háptica
