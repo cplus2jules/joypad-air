@@ -7,13 +7,15 @@ import { depth } from '../haptics';
 // ── Analog Stick (with depressed bowl + raised thumb) ───
 export default function Stick({ stickId, send, big }) {
   const RADIUS = big ? 95 : 55;
-  // Sensibilidad balanceada — curva casi lineal, deadzone amplio para evitar drift
-  const SENSITIVITY = 0.85;     // antes 0.65 — menos amplificación de movimientos pequeños
-  const DEADZONE = 0.18;        // zona muerta interna: ignorar primer ~18% del radio
-  const SOFT_THRESHOLD = 0.32;  // antes 0.18 — feedback ligero más tarde
-  const HARD_THRESHOLD = 0.60;  // antes 0.55 — click fuerte más definitivo
-  const SEND_THROTTLE_MS = 10;
-  const EDGE_PULSE_MS = 250;    // antes 55ms — pulso al borde mucho menos frecuente
+  // OJO: el valor ENVIADO al server es crudo [-1,1] (solo clamp al radio).
+  // La deadzone/curva del stick viven en el server (stick-engine, mensaje config).
+  // SENSITIVITY y DEADZONE se conservan SOLO para los thresholds de háptica.
+  const SENSITIVITY = 0.85;
+  const DEADZONE = 0.18;
+  const SOFT_THRESHOLD = 0.32;  // feedback ligero
+  const HARD_THRESHOLD = 0.60;  // click fuerte de compromiso de dirección
+  const SEND_THROTTLE_MS = 16;  // antes 10ms — el {0,0} de release va aparte, sin throttle
+  const EDGE_PULSE_MS = 250;    // pulso al borde poco frecuente
 
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const scale = useRef(new Animated.Value(1)).current;
@@ -47,34 +49,37 @@ export default function Stick({ stickId, send, big }) {
     }
     pan.setValue({ x: dx, y: dy });
 
-    // Normalizar
-    let nx = dx / RADIUS;
-    let ny = dy / RADIUS;
+    // Normalizar — valor CRUDO que se envía (sin deadzone ni curva)
+    const nx = dx / RADIUS;
+    const ny = dy / RADIUS;
 
-    // Zona muerta interna radial — ignorar movimientos micro
-    const mag = Math.hypot(nx, ny);
+    // Valores con deadzone+curva SOLO para los thresholds de háptica
+    // (idéntico al comportamiento previo del feedback)
+    let hx = nx;
+    let hy = ny;
+    const mag = Math.hypot(hx, hy);
     if (mag < DEADZONE) {
-      nx = 0;
-      ny = 0;
+      hx = 0;
+      hy = 0;
     } else {
       // re-mapear [DEADZONE, 1] → [0, 1] con curva de sensibilidad
       const scaled = (mag - DEADZONE) / (1 - DEADZONE);
       const curved = Math.pow(scaled, SENSITIVITY);
       const factor = curved / mag;
-      nx *= factor;
-      ny *= factor;
+      hx *= factor;
+      hy *= factor;
     }
 
     // Soft tick: sutil al primer movimiento fuera de zona muerta
-    const softNow = Math.abs(nx) > SOFT_THRESHOLD || Math.abs(ny) > SOFT_THRESHOLD;
+    const softNow = Math.abs(hx) > SOFT_THRESHOLD || Math.abs(hy) > SOFT_THRESHOLD;
     if (softNow !== softActiveRef.current) {
       softActiveRef.current = softNow;
       if (softNow) depth.stickSoft();
     }
 
     // Hard click: compromiso de dirección
-    const dirX = nx > HARD_THRESHOLD ? 1 : nx < -HARD_THRESHOLD ? -1 : 0;
-    const dirY = ny > HARD_THRESHOLD ? 1 : ny < -HARD_THRESHOLD ? -1 : 0;
+    const dirX = hx > HARD_THRESHOLD ? 1 : hx < -HARD_THRESHOLD ? -1 : 0;
+    const dirY = hy > HARD_THRESHOLD ? 1 : hy < -HARD_THRESHOLD ? -1 : 0;
     if (dirX !== lastDirRef.current.x || dirY !== lastDirRef.current.y) {
       depth.stickClick();
       lastDirRef.current = { x: dirX, y: dirY };

@@ -43,6 +43,11 @@ export function useConnection(player) {
         if (active) {
           setStatus('conectado');
           haptic.light();
+          // El stick envía valores crudos; la deadzone/histéresis la aplica
+          // el stick-engine del server con esta configuración.
+          try {
+            socket.send(JSON.stringify({ t: 'config', engage: 0.55, release: 0.40, angularHysteresis: 11.25 }));
+          } catch {}
         }
       };
       socket.onclose = () => {
