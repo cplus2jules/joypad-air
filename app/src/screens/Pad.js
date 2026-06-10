@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -5,18 +6,31 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { C, SHADOW } from '../theme';
-import { haptic } from '../haptics';
+import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
+import { haptic, setIntensity } from '../haptics';
 import { useConnection } from '../net/connection';
+import { useSettings } from '../store/settings';
 import RecessedBtn from '../components/RecessedBtn';
 import { SymbolBtn, CaptureBtn, HomeBtn } from '../components/SymbolButtons';
 import Stick from '../components/Stick';
 import DPad from '../components/DPad';
-import FaceButtons from '../components/FaceButtons';
+import FaceButtons, { mapFaceName } from '../components/FaceButtons';
 
 // ── Pad ─────────────────────────────────────────────────
 export default function Pad({ player, layout, compact, onToggleCompact, onBack, onOpenSettings }) {
-  const { status, send } = useConnection(player);
+  const { settings } = useSettings();
+  const profile = settings.profiles[player] ?? settings.profiles[1];
+  const theme = useMemo(() => resolveTheme(profile.themeId), [profile.themeId]);
+  const { status, send } = useConnection(player, profile);
+
+  // Nivel de háptica del perfil → módulo global (al montar y al cambiar)
+  useEffect(() => {
+    setIntensity(profile.hapticLevel);
+  }, [profile.hapticLevel]);
+
+  // Acento del lado correspondiente al slot: P1 = L, P2 = R
+  const accent = player === 1 ? theme.accentL : theme.accentR;
+  const pillInk = theme.light ? JOYCON_DARK_INK : '#fff';
 
   return (
     <View style={s.pad}>
@@ -27,12 +41,11 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
         <Pressable
           onLongPress={() => { haptic.medium(); onOpenSettings?.(); }}
           delayLongPress={400}
-          style={[
-            s.playerPill,
-            { backgroundColor: player === 1 ? C.red : C.blue },
-          ]}
+          style={[s.playerPill, { backgroundColor: accent }]}
         >
-          <Text style={s.playerPillText}>CHOCORRAMITO {player}</Text>
+          <Text style={[s.playerPillText, { color: pillInk }]}>
+            {profile.name.toUpperCase()}
+          </Text>
         </Pressable>
         <Text
           style={[
@@ -56,23 +69,24 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
       <View style={s.body}>
         {layout === 'full' && (
           <>
-            <LeftJoycon send={send} compact={compact} />
-            <RightJoycon send={send} compact={compact} />
+            <LeftJoycon send={send} compact={compact} theme={theme} profile={profile} />
+            <RightJoycon send={send} compact={compact} theme={theme} profile={profile} />
           </>
         )}
-        {layout === 'left' && <SidewaysLeft send={send} />}
-        {layout === 'right' && <SidewaysRight send={send} />}
+        {layout === 'left' && <SidewaysLeft send={send} theme={theme} profile={profile} />}
+        {layout === 'right' && <SidewaysRight send={send} theme={theme} profile={profile} />}
       </View>
     </View>
   );
 }
 
 // ── Sideways Left Joy-Con (Mario Kart style — full screen) ─
-function SidewaysLeft({ send }) {
+function SidewaysLeft({ send, theme, profile }) {
+  const btnScale = { transform: [{ scale: profile.buttonScale }] };
   return (
-    <View style={[s.sideways, { backgroundColor: C.red }]}>
+    <View style={[s.sideways, { backgroundColor: theme.L[1] }]}>
       <LinearGradient
-        colors={[C.redLight, C.red, C.redDark]}
+        colors={theme.L}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -85,7 +99,7 @@ function SidewaysLeft({ send }) {
 
       {/* face buttons (dpad acting as faces) on left */}
       <View style={s.swFaceLeft}>
-        <View style={s.swFace}>
+        <View style={[s.swFace, btnScale]}>
           <View style={[s.swFaceSlot, s.swFaceTop]}>
             <RecessedBtn name="dpad_left" label="◀" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
           </View>
@@ -108,7 +122,7 @@ function SidewaysLeft({ send }) {
 
       {/* bottom: minus + capture */}
       <View style={s.swBottomRow}>
-        <SymbolBtn name="minus" symbol="−" send={send} />
+        <SymbolBtn name="minus" symbol="−" send={send} dark={theme.light} />
         <View style={{ width: 14 }} />
         <CaptureBtn send={send} />
       </View>
@@ -117,11 +131,20 @@ function SidewaysLeft({ send }) {
 }
 
 // ── Sideways Right Joy-Con (Mario Kart style — full screen) ─
-function SidewaysRight({ send }) {
+function SidewaysRight({ send, theme, profile }) {
+  const btnScale = { transform: [{ scale: profile.buttonScale }] };
+  // Mismo mapa de swap que FaceButtons (name enviado + etiqueta de posición)
+  const fn = (orig) => mapFaceName(orig, profile.swapAB);
+  const faceSlots = [
+    [s.swFaceTop, 'y'],
+    [s.swFaceLeftPos, 'b'],
+    [s.swFaceRightPos, 'x'],
+    [s.swFaceBottom, 'a'],
+  ];
   return (
-    <View style={[s.sideways, { backgroundColor: C.blue }]}>
+    <View style={[s.sideways, { backgroundColor: theme.R[1] }]}>
       <LinearGradient
-        colors={[C.blueLight, C.blue, C.blueDark]}
+        colors={theme.R}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -138,24 +161,20 @@ function SidewaysRight({ send }) {
 
       {/* ABXY on right (rotated so it sits like sideways) */}
       <View style={s.swFaceRight}>
-        <View style={s.swFace}>
-          <View style={[s.swFaceSlot, s.swFaceTop]}>
-            <RecessedBtn name="y" label="Y" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
-          </View>
-          <View style={[s.swFaceSlot, s.swFaceLeftPos]}>
-            <RecessedBtn name="b" label="B" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
-          </View>
-          <View style={[s.swFaceSlot, s.swFaceRightPos]}>
-            <RecessedBtn name="x" label="X" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
-          </View>
-          <View style={[s.swFaceSlot, s.swFaceBottom]}>
-            <RecessedBtn name="a" label="A" send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
-          </View>
+        <View style={[s.swFace, btnScale]}>
+          {faceSlots.map(([slotStyle, orig]) => {
+            const name = fn(orig);
+            return (
+              <View key={name} style={[s.swFaceSlot, slotStyle]}>
+                <RecessedBtn name={name} label={name.toUpperCase()} send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
+              </View>
+            );
+          })}
         </View>
       </View>
 
       <View style={s.swBottomRow}>
-        <SymbolBtn name="plus" symbol="+" send={send} />
+        <SymbolBtn name="plus" symbol="+" send={send} dark={theme.light} />
         <View style={{ width: 14 }} />
         <HomeBtn send={send} />
       </View>
@@ -164,11 +183,13 @@ function SidewaysRight({ send }) {
 }
 
 // ── Left Joy-Con ────────────────────────────────────────
-function LeftJoycon({ send, compact }) {
+function LeftJoycon({ send, compact, theme, profile }) {
+  // Un solo transform de escala en el contenedor del cluster
+  const btnScale = { transform: [{ scale: profile.buttonScale }] };
   return (
     <View style={[s.joycon, s.joyconLeft]}>
       <LinearGradient
-        colors={[C.redLight, C.red, C.redDark]}
+        colors={theme.L}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -180,7 +201,7 @@ function LeftJoycon({ send, compact }) {
 
       <View style={s.joyconInner}>
         <View style={s.cornerTopRight}>
-          <SymbolBtn name="minus" send={send} symbol="−" />
+          <SymbolBtn name="minus" send={send} symbol="−" dark={theme.light} />
         </View>
 
         <View style={compact ? s.stickWrapCenter : s.stickWrap}>
@@ -189,7 +210,9 @@ function LeftJoycon({ send, compact }) {
 
         {!compact && (
           <View style={s.dpadWrap}>
-            <DPad send={send} />
+            <View style={btnScale}>
+              <DPad send={send} />
+            </View>
           </View>
         )}
 
@@ -204,11 +227,12 @@ function LeftJoycon({ send, compact }) {
 }
 
 // ── Right Joy-Con ───────────────────────────────────────
-function RightJoycon({ send, compact }) {
+function RightJoycon({ send, compact, theme, profile }) {
+  const btnScale = { transform: [{ scale: profile.buttonScale }] };
   return (
     <View style={[s.joycon, s.joyconRight]}>
       <LinearGradient
-        colors={[C.blueLight, C.blue, C.blueDark]}
+        colors={theme.R}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -220,11 +244,13 @@ function RightJoycon({ send, compact }) {
 
       <View style={s.joyconInner}>
         <View style={s.cornerTopLeft}>
-          <SymbolBtn name="plus" send={send} symbol="+" />
+          <SymbolBtn name="plus" send={send} symbol="+" dark={theme.light} />
         </View>
 
         <View style={compact ? s.faceWrapCenter : s.faceWrap}>
-          <FaceButtons send={send} big={compact} />
+          <View style={btnScale}>
+            <FaceButtons send={send} big={compact} swap={profile.swapAB} />
+          </View>
         </View>
 
         {!compact && (

@@ -8,9 +8,10 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { C, SHADOW } from '../theme';
+import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
 import { haptic, depth } from '../haptics';
 import { detectHost, SERVER_PORT } from '../net/connection';
+import { useSettings } from '../store/settings';
 
 // ── Background blobs (slow drift) ───────────────────────
 function FloatingBlobs() {
@@ -123,7 +124,13 @@ function ModeCard({ id, label, sublabel, active, onPress }) {
 // ── Player card (huge gradient with joycon visual) ──────
 function PlayerCard({ player, onPick }) {
   const isP1 = player === 1;
-  const colors = isP1 ? [C.redLight, C.red, C.redDark] : [C.blueLight, C.blue, C.blueDark];
+  // Tema y nombre del perfil del jugador (P1 = lado L, P2 = lado R)
+  const { settings } = useSettings();
+  const profile = settings.profiles[player] ?? settings.profiles[1];
+  const theme = resolveTheme(profile.themeId);
+  const colors = isP1 ? theme.L : theme.R;
+  const accent = isP1 ? theme.accentL : theme.accentR;
+  const darkInk = theme.light; // temas claros → texto oscuro sobre la card
   const scale = useRef(new Animated.Value(1)).current;
   const breath = useRef(new Animated.Value(0)).current;
 
@@ -156,7 +163,7 @@ function PlayerCard({ player, onPick }) {
         pointerEvents="none"
         style={[
           s.playerCardGlow,
-          { backgroundColor: isP1 ? C.red : C.blue, opacity: glowOpacity },
+          { backgroundColor: accent, opacity: glowOpacity },
         ]}
       />
       <Animated.View style={{ transform: [{ scale }] }}>
@@ -167,15 +174,22 @@ function PlayerCard({ player, onPick }) {
           style={s.playerCard}
         >
           <Text
-            style={s.playerCardNumberBg}
+            style={[s.playerCardNumberBg, darkInk && { color: 'rgba(0,0,0,0.22)' }]}
             numberOfLines={1}
             allowFontScaling={false}
           >
             {player}
           </Text>
           <View style={s.playerCardFg}>
-            <Text style={s.playerCardKicker} numberOfLines={1}>CHOCORRAMITO</Text>
-            <Text style={s.playerCardCTA}>Empezar ›</Text>
+            <Text
+              style={[s.playerCardKicker, darkInk && { color: 'rgba(0,0,0,0.55)' }]}
+              numberOfLines={1}
+            >
+              {profile.name.toUpperCase()}
+            </Text>
+            <Text style={[s.playerCardCTA, darkInk && { color: JOYCON_DARK_INK }]}>
+              Empezar ›
+            </Text>
           </View>
         </LinearGradient>
       </Animated.View>

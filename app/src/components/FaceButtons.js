@@ -1,29 +1,46 @@
 import { StyleSheet, View } from 'react-native';
 import RecessedBtn from './RecessedBtn';
 
-// ── Face buttons (X up, Y left, A right, B down) ────────
-export default function FaceButtons({ send, big }) {
+// Swap A/B · X/Y (layout Xbox): se aplica al name ENVIADO y las
+// etiquetas visuales quedan intercambiadas de posición.
+export const SWAP_MAP = { a: 'b', b: 'a', x: 'y', y: 'x' };
+export const mapFaceName = (name, swap) => (swap ? SWAP_MAP[name] ?? name : name);
+
+// ── Face buttons (X up, Y left, A right, B down — Nintendo) ─
+// Con swap: Y up, X left, B right, A down (Xbox).
+export default function FaceButtons({ send, big, swap }) {
   const wrap = big ? s.faceBig : s.face;
   const btnStyle = big ? s.faceBtnBig : s.faceBtn;
   const txtStyle = big ? s.faceTextBig : s.faceText;
   const slot = big ? s.faceSlotBig : s.faceSlot;
   const pos = big
-    ? { X: s.faceXBig, Y: s.faceYBig, A: s.faceABig, B: s.faceBBig }
-    : { X: s.faceX,   Y: s.faceY,   A: s.faceA,   B: s.faceB   };
+    ? { top: s.faceXBig, left: s.faceYBig, right: s.faceABig, bottom: s.faceBBig }
+    : { top: s.faceX,   left: s.faceY,   right: s.faceA,   bottom: s.faceB   };
+  // [posición, name original Nintendo]
+  const slots = [
+    ['top', 'x'],
+    ['left', 'y'],
+    ['right', 'a'],
+    ['bottom', 'b'],
+  ];
   return (
     <View style={wrap}>
-      <View style={[slot, pos.X]}>
-        <RecessedBtn name="x" label="X" send={send} style={btnStyle} textStyle={txtStyle} />
-      </View>
-      <View style={[slot, pos.Y]}>
-        <RecessedBtn name="y" label="Y" send={send} style={btnStyle} textStyle={txtStyle} />
-      </View>
-      <View style={[slot, pos.A]}>
-        <RecessedBtn name="a" label="A" send={send} style={btnStyle} textStyle={txtStyle} />
-      </View>
-      <View style={[slot, pos.B]}>
-        <RecessedBtn name="b" label="B" send={send} style={btnStyle} textStyle={txtStyle} />
-      </View>
+      {slots.map(([place, orig]) => {
+        const name = mapFaceName(orig, swap);
+        return (
+          // key incluye el name: RecessedBtn captura `name` en su gesto
+          // (useMemo []) → al cambiar swap forzamos remount.
+          <View key={`${place}-${name}`} style={[slot, pos[place]]}>
+            <RecessedBtn
+              name={name}
+              label={name.toUpperCase()}
+              send={send}
+              style={btnStyle}
+              textStyle={txtStyle}
+            />
+          </View>
+        );
+      })}
     </View>
   );
 }

@@ -15,10 +15,33 @@ export function detectHost() {
 
 // ── Conexión WebSocket con reconexión (1.5s) ────────────
 // Estados: 'conectando' | 'conectado' | 'error' | 'sin host' | 'reconectando'
-export function useConnection(player) {
+// `profile` (opcional): perfil activo de settings — name/themeId/engage/release
+// viajan en el mensaje config y se reenvían en vivo si cambian.
+export function useConnection(player, profile) {
   const wsRef = useRef(null);
   const [status, setStatus] = useState('conectando');
   const host = useMemo(() => detectHost(), []);
+
+  const name = profile?.name ?? `Chocorramito ${player}`;
+  const themeId = profile?.themeId ?? 'neon';
+  const engage = profile?.engage ?? 0.55;
+  const release = profile?.release ?? 0.40;
+
+  // Ref con el config vigente — el onopen lo lee fresco sin
+  // reconectar el socket cada vez que cambia un slider.
+  const cfgRef = useRef(null);
+  cfgRef.current = { name, theme: themeId, engage, release };
+
+  const sendConfig = () => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === 1) {
+      // El stick envía valores crudos; la deadzone/histéresis la aplica
+      // el stick-engine del server con esta configuración.
+      try {
+        ws.send(JSON.stringify({ t: 'config', ...cfgRef.current, angularHysteresis: 11.25 }));
+      } catch {}
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -43,11 +66,7 @@ export function useConnection(player) {
         if (active) {
           setStatus('conectado');
           haptic.light();
-          // El stick envía valores crudos; la deadzone/histéresis la aplica
-          // el stick-engine del server con esta configuración.
-          try {
-            socket.send(JSON.stringify({ t: 'config', engage: 0.55, release: 0.40, angularHysteresis: 11.25 }));
-          } catch {}
+          sendConfig();
         }
       };
       socket.onclose = () => {
@@ -64,7 +83,14 @@ export function useConnection(player) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       try { wsRef.current?.close(); } catch {}
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player, host]);
+
+  // Reenviar config en vivo cuando cambian los valores con el socket abierto
+  useEffect(() => {
+    sendConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, themeId, engage, release]);
 
   const send = (obj) => {
     const ws = wsRef.current;

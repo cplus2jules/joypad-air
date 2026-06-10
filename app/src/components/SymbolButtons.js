@@ -1,11 +1,12 @@
 import { useMemo, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
-import { SHADOW } from '../theme';
+import { JOYCON_DARK_INK, SHADOW } from '../theme';
 import { depth } from '../haptics';
 
 // ── Symbol button (+, −) ────────────────────────────────
-export function SymbolBtn({ name, symbol, send }) {
+// `dark`: símbolo en tinta oscura (temas light — joycon claro)
+export function SymbolBtn({ name, symbol, send, dark }) {
   const scale = useRef(new Animated.Value(1)).current;
   const opacity = useRef(new Animated.Value(0.55)).current;
   const pressedRef = useRef(false);
@@ -45,7 +46,7 @@ export function SymbolBtn({ name, symbol, send }) {
     <GestureDetector gesture={gesture}>
       <View style={s.symbolBtn}>
         <Animated.Text
-          style={[s.symbolText, { opacity, color: '#fff', transform: [{ scale }] }]}
+          style={[s.symbolText, { opacity, color: dark ? JOYCON_DARK_INK : '#fff', transform: [{ scale }] }]}
         >
           {symbol}
         </Animated.Text>

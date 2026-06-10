@@ -2,7 +2,9 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Settings store (AsyncStorage) ───────────────────────
-// Persistencia de perfiles por jugador. AÚN SIN UI — nadie lo consume todavía.
+// Persistencia de perfiles por jugador. UI en screens/Settings.js;
+// consumido por Pad/Picker (tema, nombre, swap, escala, háptica)
+// y por net/connection.js (engage/release/name/theme en el config).
 
 const STORAGE_KEY = '@cspm/settings/v2';
 const SAVE_DEBOUNCE_MS = 300;
