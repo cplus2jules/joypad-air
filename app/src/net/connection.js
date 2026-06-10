@@ -28,6 +28,7 @@ const INITIAL_SERVER_INFO = {
 
 // ── Conexión WebSocket con reconexión (1.5s) ────────────
 // Estados: 'conectando' | 'conectado' | 'error' | 'sin host' | 'reconectando'
+//          | 'reemplazado' (otro mando tomó el slot — NO se reintenta)
 // `profile` (opcional): perfil activo de settings — name/themeId/engage/release
 // viajan en el mensaje config y se reenvían en vivo si cambian.
 // `opts` (opcional): { motion, orientation } — estado de sesión del Pad
@@ -155,11 +156,18 @@ export function useConnection(player, profile, opts) {
       socket.onmessage = (ev) => {
         if (active) handleMessage(ev.data);
       };
-      socket.onclose = () => {
+      socket.onclose = (e) => {
         if (!active) return;
         stopPing();
         rttRef.current = null;
         setRtt(null); // sin socket no hay dato de latencia
+        // 4000 = takeover: otro mando tomó este slot. Reconectar aquí
+        // produciría un ping-pong infinito entre los dos teléfonos —
+        // se queda en 'reemplazado' hasta que el Pad se remonte.
+        if (e?.code === 4000) {
+          setStatus('reemplazado');
+          return;
+        }
         setStatus('reconectando');
         reconnectTimer = setTimeout(connect, 1500);
       };

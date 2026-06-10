@@ -67,8 +67,12 @@ function LatencyDot({ rtt }) {
 // Velo sobre el body (no toca el topbar) + tarjeta con spinner cuando
 // el socket está caído. Convive con ConnectOverlay: este es el estado
 // persistente "sin Mac", aquel es el flash de éxito al volver.
+// 'reemplazado' (takeover por otro mando): texto propio, SIN spinner y
+// sin reintentos — el back del topbar sigue activo para volver al Picker.
 function ReconnectOverlay({ status, host }) {
-  const visible = status === 'reconectando' || status === 'error' || status === 'sin host';
+  const replaced = status === 'reemplazado';
+  const visible =
+    status === 'reconectando' || status === 'error' || status === 'sin host' || replaced;
   const [rendered, setRendered] = useState(visible);
   const op = useRef(new Animated.Value(visible ? 1 : 0)).current;
 
@@ -89,9 +93,13 @@ function ReconnectOverlay({ status, host }) {
   return (
     <Animated.View pointerEvents="none" style={[s.reconnWrap, { opacity: op }]}>
       <View style={s.reconnCard}>
-        <ActivityIndicator color="#fff" />
-        <Text style={s.reconnText}>Reconectando con el Mac…</Text>
-        {host ? (
+        {!replaced && <ActivityIndicator color="#fff" />}
+        <Text style={[s.reconnText, replaced && s.reconnTextReplaced]}>
+          {replaced
+            ? 'Otro mando tomó este slot — vuelve atrás para elegir jugador'
+            : 'Reconectando con el Mac…'}
+        </Text>
+        {!replaced && host ? (
           <Text style={s.reconnHost}>{host}:{SERVER_PORT}</Text>
         ) : null}
       </View>
@@ -564,6 +572,11 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  reconnTextReplaced: {
+    textAlign: 'center',
+    maxWidth: 300,
+    lineHeight: 18,
   },
   reconnHost: {
     color: 'rgba(255,255,255,0.45)',
