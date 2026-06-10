@@ -3,7 +3,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { C } from '../theme';
-import { haptic, depth } from '../haptics';
+import { depth, getRepeatMs, repeatPulse } from '../haptics';
 
 // ── Recessed (deep) button — used for face / shoulders / dpad ─
 export default function RecessedBtn({ name, label, send, style, textStyle, h = 'medium', releaseHaptic = 'select' }) {
@@ -42,7 +42,8 @@ export default function RecessedBtn({ name, label, send, style, textStyle, h = '
     animateIn();
     send({ t: 'btn', k: name, d: true });
     if (h === 'heavy') {
-      repeatRef.current = setInterval(() => haptic.rigid(), 140);
+      const ms = getRepeatMs(); // 140 normal/suave · 100 fuerte · 0 = off
+      if (ms > 0) repeatRef.current = setInterval(repeatPulse, ms);
     }
   };
   const doPressOut = () => {
