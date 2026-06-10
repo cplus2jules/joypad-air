@@ -30,6 +30,9 @@ export default function Stick({ stickId, send, big, floating = true }) {
   const softActiveRef = useRef(false);
   const edgePulseRef = useRef(null);
   const atEdgeRef = useRef(false);
+  const grabbedRef = useRef(false);       // gesto en curso → release idempotente
+  const trailingTimerRef = useRef(null);  // trailing-edge del throttle
+  const pendingSampleRef = useRef(null);  // última muestra descartada por el throttle
 
   const startEdgePulse = () => {
     if (edgePulseRef.current) return;
@@ -42,7 +45,19 @@ export default function Stick({ stickId, send, big, floating = true }) {
     }
   };
 
-  useEffect(() => () => stopEdgePulse(), []);
+  const cancelTrailing = () => {
+    if (trailingTimerRef.current) {
+      clearTimeout(trailingTimerRef.current);
+      trailingTimerRef.current = null;
+    }
+    pendingSampleRef.current = null;
+  };
+
+  useEffect(() => () => {
+    stopEdgePulse();
+    cancelTrailing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onMove = (dxRaw, dyRaw) => {
     let dx = dxRaw;
@@ -105,11 +120,30 @@ export default function Stick({ stickId, send, big, floating = true }) {
     const now = Date.now();
     if (now - lastSentTs.current > SEND_THROTTLE_MS) {
       lastSentTs.current = now;
+      cancelTrailing();
       send({ t: 'stick', s: stickId, x: nx, y: ny });
+    } else {
+      // Trailing-edge: sin esto la última muestra antes de que el dedo
+      // quede quieto se descarta y el server retiene un valor viejo
+      // (puede quedar bajo el umbral de engage). Se emite al expirar
+      // la ventana del throttle, cancelando el timer anterior.
+      pendingSampleRef.current = { x: nx, y: ny };
+      if (trailingTimerRef.current) clearTimeout(trailingTimerRef.current);
+      const wait = Math.max(1, SEND_THROTTLE_MS - (now - lastSentTs.current) + 1);
+      trailingTimerRef.current = setTimeout(() => {
+        trailingTimerRef.current = null;
+        const sample = pendingSampleRef.current;
+        pendingSampleRef.current = null;
+        if (sample) {
+          lastSentTs.current = Date.now();
+          send({ t: 'stick', s: stickId, x: sample.x, y: sample.y });
+        }
+      }, wait);
     }
   };
 
   const onGrab = () => {
+    grabbedRef.current = true;
     // sin haptic en grab — usuario lo sentía excesivo
     Animated.parallel([
       Animated.spring(scale, { toValue: 0.94, useNativeDriver: true, tension: 220, friction: 8 }),
@@ -117,7 +151,12 @@ export default function Stick({ stickId, send, big, floating = true }) {
     ]).start();
   };
 
+  // Idempotente: corre desde onFinalize (end/fail/cancel) — un tap sin
+  // movimiento en modo fijo nunca ACTIVA el gesto, así que onEnd no basta.
   const onRelease = () => {
+    if (!grabbedRef.current) return;
+    grabbedRef.current = false;
+    cancelTrailing(); // el {0,0} de abajo manda; sin trailing rezagado
     stopEdgePulse();
     atEdgeRef.current = false;
     softActiveRef.current = false;
@@ -140,6 +179,20 @@ export default function Stick({ stickId, send, big, floating = true }) {
     lastDirRef.current = { x: 0, y: 0 };
   };
 
+  // Los callbacks van en refs (actualizadas en cada render): el gesto se
+  // memoiza UNA vez (deps []) y siempre llama la versión fresca — ningún
+  // cambio de props (big → RADIUS/CENTER, floating, send) queda stale.
+  const onMoveRef = useRef();
+  const onGrabRef = useRef();
+  const onReleaseRef = useRef();
+  const floatingRef = useRef(floating);
+  const centerRef = useRef(CENTER);
+  onMoveRef.current = onMove;
+  onGrabRef.current = onGrab;
+  onReleaseRef.current = onRelease;
+  floatingRef.current = floating;
+  centerRef.current = CENTER;
+
   const gesture = useMemo(
     () =>
       Gesture.Pan()
@@ -147,18 +200,20 @@ export default function Stick({ stickId, send, big, floating = true }) {
         .minDistance(0)
         .hitSlop(25)
         .onBegin((e) => {
-          onGrab();
+          onGrabRef.current();
           // modo fijo: deflexión inmediata desde el primer contacto
-          if (!floating) onMove(e.x - CENTER, e.y - CENTER);
+          if (!floatingRef.current) {
+            onMoveRef.current(e.x - centerRef.current, e.y - centerRef.current);
+          }
         })
         .onUpdate((e) => {
-          if (floating) onMove(e.translationX, e.translationY);
-          else onMove(e.x - CENTER, e.y - CENTER);
+          if (floatingRef.current) onMoveRef.current(e.translationX, e.translationY);
+          else onMoveRef.current(e.x - centerRef.current, e.y - centerRef.current);
         })
-        .onEnd(onRelease)
-        .onFinalize(() => {}),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [floating]
+        // release en onFinalize: corre SIEMPRE (end/fail/cancel), también si
+        // el gesto nunca llegó a ACTIVE (tap sin movimiento en modo fijo)
+        .onFinalize(() => onReleaseRef.current()),
+    []
   );
 
   return (
