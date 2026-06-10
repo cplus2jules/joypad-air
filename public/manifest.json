@@ -1,6 +1,6 @@
 {
-  "name": "Switch Controller",
-  "short_name": "Switch Pad",
+  "name": "El Control Super Pro Max",
+  "short_name": "Control Pro Max",
   "description": "Mando virtual para Ryujinx en Mac",
   "start_url": "./",
   "display": "fullscreen",

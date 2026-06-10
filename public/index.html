@@ -2,11 +2,11 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Switch Controller</title>
+  <title>El Control Super Pro Max</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Switch Pad" />
+  <meta name="apple-mobile-web-app-title" content="Control Pro Max" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#0b0d12" />
   <link rel="manifest" href="manifest.json" />
@@ -15,65 +15,208 @@
   <link rel="stylesheet" href="controller.css" />
 </head>
 <body>
-  <div id="picker" class="picker">
-    <h1>Switch Controller</h1>
-    <p>Elige tu jugador</p>
-    <div class="picker-row">
-      <button class="picker-btn p1" data-player="1">Player 1</button>
-      <button class="picker-btn p2" data-player="2">Player 2</button>
+
+  <!-- ═══ Picker ═══════════════════════════════════════ -->
+  <section id="picker" class="picker">
+    <div class="blob blob-l" aria-hidden="true"></div>
+    <div class="blob blob-r" aria-hidden="true"></div>
+
+    <button id="picker-settings" class="icon-btn picker-gear" type="button" aria-label="Ajustes">⚙</button>
+
+    <header class="brand">
+      <div class="brand-kicker">EL CONTROL</div>
+      <div class="brand-title">SUPER PRO MAX</div>
+    </header>
+
+    <div class="cards">
+      <button class="card" type="button" data-player="1">
+        <span class="card-joys" aria-hidden="true">
+          <span class="mini-joy mini-l"></span><span class="mini-joy mini-r"></span>
+        </span>
+        <span class="card-player">PLAYER 1</span>
+        <span class="card-name" data-card-name="1">Chocorramito 1</span>
+        <span class="card-status"><span class="dot" data-card-dot="1"></span><span data-card-status="1">Buscando…</span></span>
+      </button>
+      <button class="card" type="button" data-player="2">
+        <span class="card-joys" aria-hidden="true">
+          <span class="mini-joy mini-l"></span><span class="mini-joy mini-r"></span>
+        </span>
+        <span class="card-player">PLAYER 2</span>
+        <span class="card-name" data-card-name="2">Chocorramito 2</span>
+        <span class="card-status"><span class="dot" data-card-dot="2"></span><span data-card-status="2">Buscando…</span></span>
+      </button>
     </div>
-    <p class="hint">En el iPhone, agrégalo a la pantalla de inicio para jugar en pantalla completa.</p>
+
+    <p class="picker-hint">En el iPhone: Compartir → «Agregar a pantalla de inicio» para jugar a pantalla completa.</p>
+  </section>
+
+  <!-- ═══ Pad (layout Pareja, edge-to-edge) ════════════ -->
+  <section id="pad" class="pad" hidden>
+    <header class="topbar">
+      <button id="btn-back" class="icon-btn" type="button" aria-label="Volver">‹</button>
+
+      <div class="pill" id="player-pill">
+        <span class="leds" aria-hidden="true">
+          <span class="led" data-led="1"></span><span class="led" data-led="2"></span><span class="led" data-led="3"></span><span class="led" data-led="4"></span>
+        </span>
+        <span class="pill-name" id="pill-name">CHOCORRAMITO 1</span>
+      </div>
+
+      <div class="topbar-right">
+        <button id="lat-btn" class="lat-btn" type="button" aria-label="Latencia">
+          <span class="lat-dot lat-none" id="lat-dot"></span>
+          <span class="lat-ms" id="lat-ms">— ms</span>
+        </button>
+        <button id="btn-motion" class="chip-btn" type="button">GIRO</button>
+        <button id="btn-settings" class="icon-btn" type="button" aria-label="Ajustes">⚙</button>
+      </div>
+    </header>
+
+    <div id="banner" class="banner" aria-live="polite"></div>
+
+    <div class="pad-body">
+      <!-- Joy-Con izquierdo -->
+      <div class="joycon joycon-l">
+        <div class="trigger-bar trigger-bar-l" id="tbar-l">
+          <div class="tseg" data-tkey="zl">ZL</div>
+          <div class="tseg" data-tkey="l">L</div>
+          <div class="tseg" data-tkey="sl">SL</div>
+        </div>
+
+        <button class="sym-btn corner-minus" type="button" data-key="minus" aria-label="Menos">−</button>
+
+        <div class="stick-zone stick-zone-l" id="stick-l">
+          <div class="stick-bowl" aria-hidden="true"></div>
+          <div class="stick-thumb" aria-hidden="true"><span class="stick-thumb-hl"></span></div>
+        </div>
+
+        <div class="dpad" id="dpad">
+          <div class="dpad-btn dpad-up" data-dir="up" aria-hidden="true">▲</div>
+          <div class="dpad-btn dpad-down" data-dir="down" aria-hidden="true">▼</div>
+          <div class="dpad-btn dpad-left" data-dir="left" aria-hidden="true">◀</div>
+          <div class="dpad-btn dpad-right" data-dir="right" aria-hidden="true">▶</div>
+        </div>
+
+        <button class="sym-btn sym-capture corner-capture" type="button" data-key="capture" aria-label="Captura"><span class="capture-icon"></span></button>
+      </div>
+
+      <!-- Joy-Con derecho -->
+      <div class="joycon joycon-r">
+        <div class="trigger-bar trigger-bar-r" id="tbar-r">
+          <div class="tseg" data-tkey="sr">SR</div>
+          <div class="tseg" data-tkey="r">R</div>
+          <div class="tseg" data-tkey="zr">ZR</div>
+        </div>
+
+        <button class="sym-btn corner-plus" type="button" data-key="plus" aria-label="Más">+</button>
+
+        <div class="face" id="face">
+          <button class="face-btn face-top" type="button" data-pos="top">X</button>
+          <button class="face-btn face-left" type="button" data-pos="left">Y</button>
+          <button class="face-btn face-right" type="button" data-pos="right">A</button>
+          <button class="face-btn face-bottom" type="button" data-pos="bottom">B</button>
+        </div>
+
+        <div class="stick-zone stick-zone-r" id="stick-r">
+          <div class="stick-bowl" aria-hidden="true"></div>
+          <div class="stick-thumb" aria-hidden="true"><span class="stick-thumb-hl"></span></div>
+        </div>
+
+        <button class="sym-btn corner-home" type="button" data-key="home" aria-label="Home">⌂</button>
+      </div>
+    </div>
+
+    <div id="reconnect" class="reconnect" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="reconnect-text">Reconectando con el Mac…</div>
+    </div>
+  </section>
+
+  <!-- ═══ Ajustes (modal) ══════════════════════════════ -->
+  <div id="settings" class="settings" hidden>
+    <div class="settings-backdrop" id="settings-backdrop"></div>
+    <div class="sheet" role="dialog" aria-label="Ajustes">
+      <header class="sheet-head">
+        <h2>Ajustes</h2>
+        <button id="settings-close" class="icon-btn" type="button" aria-label="Cerrar">✕</button>
+      </header>
+
+      <div class="sheet-body">
+        <section class="set-section">
+          <h3>Nombre</h3>
+          <div class="set-row">
+            <label class="set-label" for="name-1">Player 1</label>
+            <input id="name-1" class="name-input" type="text" maxlength="14" autocomplete="off" autocapitalize="words" />
+          </div>
+          <div class="set-row">
+            <label class="set-label" for="name-2">Player 2</label>
+            <input id="name-2" class="name-input" type="text" maxlength="14" autocomplete="off" autocapitalize="words" />
+          </div>
+        </section>
+
+        <section class="set-section">
+          <h3>Tema</h3>
+          <div class="theme-grid" id="theme-grid"></div>
+        </section>
+
+        <section class="set-section">
+          <h3>Sticks</h3>
+          <div class="set-row slider-row">
+            <span class="set-label">Activación</span>
+            <div class="slider" id="slider-engage">
+              <div class="slider-track"><div class="slider-fill"></div></div>
+              <div class="slider-thumb"></div>
+            </div>
+            <span class="slider-value" id="engage-value">0.55</span>
+          </div>
+          <div class="set-row slider-row">
+            <span class="set-label">Liberación</span>
+            <div class="slider" id="slider-release">
+              <div class="slider-track"><div class="slider-fill"></div></div>
+              <div class="slider-thumb"></div>
+            </div>
+            <span class="slider-value" id="release-value">0.40</span>
+          </div>
+          <p class="set-hint">Activación: cuánto hay que empujar el stick para que entre la dirección. Liberación: dónde se suelta (siempre por debajo de la activación).</p>
+        </section>
+
+        <section class="set-section">
+          <h3>Botones</h3>
+          <div class="set-row">
+            <span class="set-label">Intercambiar A/B · X/Y</span>
+            <button id="swap-toggle" class="toggle" type="button" role="switch" aria-checked="false"><span class="toggle-knob"></span></button>
+          </div>
+        </section>
+
+        <section class="set-section">
+          <h3>Háptica</h3>
+          <div class="seg" id="haptic-seg">
+            <button class="seg-btn" type="button" data-haptic="off">Off</button>
+            <button class="seg-btn" type="button" data-haptic="suave">Suave</button>
+            <button class="seg-btn" type="button" data-haptic="normal">Normal</button>
+            <button class="seg-btn" type="button" data-haptic="fuerte">Fuerte</button>
+          </div>
+        </section>
+
+        <section class="set-section">
+          <h3>Giro (debug)</h3>
+          <div class="motion-debug" id="motion-debug">
+            <span>ax <b id="dbg-ax">—</b></span>
+            <span>ay <b id="dbg-ay">—</b></span>
+            <span>az <b id="dbg-az">—</b></span>
+          </div>
+          <p class="set-hint">Con GIRO activo y el teléfono plano boca arriba, az debe marcar ≈ −1.00.</p>
+        </section>
+      </div>
+    </div>
   </div>
 
+  <!-- ═══ Gira el teléfono ═════════════════════════════ -->
   <div id="rotate-hint" class="rotate-hint" hidden>
+    <div class="rotate-icon" aria-hidden="true">⟳</div>
     <div>Gira el teléfono en horizontal</div>
   </div>
 
-  <div id="pad" class="pad" hidden>
-    <header class="topbar">
-      <button class="chip" data-btn="minus">−</button>
-      <button class="chip" data-btn="capture">◉</button>
-      <div class="player-label" id="playerLabel">P1</div>
-      <div class="status" id="status">conectando…</div>
-      <button class="chip" data-btn="home">⌂</button>
-      <button class="chip" data-btn="plus">+</button>
-    </header>
-
-    <div class="side left">
-      <div class="shoulders">
-        <button class="shoulder" data-btn="zl">ZL</button>
-        <button class="shoulder" data-btn="l">L</button>
-      </div>
-      <div class="stick" data-stick="L">
-        <div class="stick-base"></div>
-        <div class="stick-thumb"></div>
-      </div>
-      <div class="dpad">
-        <button class="dpad-btn up" data-btn="dpad_up">▲</button>
-        <button class="dpad-btn left" data-btn="dpad_left">◀</button>
-        <button class="dpad-btn right" data-btn="dpad_right">▶</button>
-        <button class="dpad-btn down" data-btn="dpad_down">▼</button>
-      </div>
-    </div>
-
-    <div class="side right">
-      <div class="shoulders">
-        <button class="shoulder" data-btn="r">R</button>
-        <button class="shoulder" data-btn="zr">ZR</button>
-      </div>
-      <div class="face">
-        <button class="face-btn x" data-btn="x">X</button>
-        <button class="face-btn y" data-btn="y">Y</button>
-        <button class="face-btn a" data-btn="a">A</button>
-        <button class="face-btn b" data-btn="b">B</button>
-      </div>
-      <div class="stick" data-stick="R">
-        <div class="stick-base"></div>
-        <div class="stick-thumb"></div>
-      </div>
-    </div>
-  </div>
-
-  <script src="controller.js"></script>
+  <script type="module" src="controller.js"></script>
 </body>
 </html>
