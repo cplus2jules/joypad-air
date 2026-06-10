@@ -1,5 +1,8 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Animated,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -9,9 +12,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
 import { haptic, setIntensity } from '../haptics';
 import { setClickEnabled } from '../sound';
-import { useConnection } from '../net/connection';
+import { detectHost, SERVER_PORT, useConnection } from '../net/connection';
 import { useSettings } from '../store/settings';
 import ConnectOverlay from '../components/ConnectOverlay';
+import StatusBanner from '../components/StatusBanner';
 import PlayerLeds from '../components/PlayerLeds';
 import RecessedBtn from '../components/RecessedBtn';
 import ShoulderCluster from '../components/ShoulderCluster';
@@ -20,12 +24,97 @@ import Stick from '../components/Stick';
 import DPad from '../components/DPad';
 import FaceButtons, { mapFaceName } from '../components/FaceButtons';
 
+const TOPBAR_H = 40;
+const AMBER = '#faa005';
+
+// ── Punto de latencia (junto al status) ─────────────────
+// 6px: verde <25ms / ámbar <60 / rojo ≥60 / gris sin dato.
+// Al tocarlo muestra "NN ms" durante 2s.
+function LatencyDot({ rtt }) {
+  const [showMs, setShowMs] = useState(false);
+  const timerRef = useRef(null);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const color =
+    rtt == null ? 'rgba(255,255,255,0.25)'
+    : rtt < 25 ? C.ok
+    : rtt < 60 ? AMBER
+    : C.err;
+
+  return (
+    <Pressable
+      onPress={() => {
+        if (rtt == null) return;
+        setShowMs(true);
+        clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setShowMs(false), 2000);
+      }}
+      hitSlop={10}
+      style={s.latencyWrap}
+    >
+      <View style={[s.latencyDot, { backgroundColor: color }]} />
+      {showMs && <Text style={s.latencyText}>{rtt} ms</Text>}
+    </Pressable>
+  );
+}
+
+// ── Overlay de reconexión ───────────────────────────────
+// Velo sobre el body (no toca el topbar) + tarjeta con spinner cuando
+// el socket está caído. Convive con ConnectOverlay: este es el estado
+// persistente "sin Mac", aquel es el flash de éxito al volver.
+function ReconnectOverlay({ status, host }) {
+  const visible = status === 'reconectando' || status === 'error' || status === 'sin host';
+  const [rendered, setRendered] = useState(visible);
+  const op = useRef(new Animated.Value(visible ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setRendered(true);
+      Animated.timing(op, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(op, { toValue: 0, duration: 200, useNativeDriver: true }).start(
+        ({ finished }) => finished && setRendered(false)
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  if (!rendered) return null;
+
+  return (
+    <Animated.View pointerEvents="none" style={[s.reconnWrap, { opacity: op }]}>
+      <View style={s.reconnCard}>
+        <ActivityIndicator color="#fff" />
+        <Text style={s.reconnText}>Reconectando con el Mac…</Text>
+        {host ? (
+          <Text style={s.reconnHost}>{host}:{SERVER_PORT}</Text>
+        ) : null}
+      </View>
+    </Animated.View>
+  );
+}
+
 // ── Pad ─────────────────────────────────────────────────
 export default function Pad({ player, layout, compact, onToggleCompact, onBack, onOpenSettings }) {
   const { settings } = useSettings();
   const profile = settings.profiles[player] ?? settings.profiles[1];
   const theme = useMemo(() => resolveTheme(profile.themeId), [profile.themeId]);
-  const { status, send } = useConnection(player, profile);
+  const { status, send, rtt, serverInfo } = useConnection(player, profile);
+  const host = useMemo(() => detectHost(), []);
+
+  // Aviso accionable del server (prioridad: accesibilidad > foco).
+  // Solo con hello recibido y conectado — sin socket manda el overlay
+  // de reconexión, y antes del handshake no hay datos fiables.
+  const bannerMsg = useMemo(() => {
+    if (status !== 'conectado' || !serverInfo.hello) return null;
+    if (serverInfo.accessibility === false || !serverInfo.native) {
+      return 'Falta el permiso de Accesibilidad en el Mac — mira la Terminal';
+    }
+    if (serverInfo.focus?.ok === false) {
+      return 'Ryujinx no tiene el foco — toca su ventana en el Mac';
+    }
+    return null;
+  }, [status, serverInfo]);
 
   // Nivel de háptica del perfil → módulo global (al montar y al cambiar)
   useEffect(() => {
@@ -68,6 +157,7 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
         >
           {status}
         </Text>
+        <LatencyDot rtt={rtt} />
         <Pressable
           onPress={() => { haptic.light(); onToggleCompact(); }}
           style={s.compactToggle}
@@ -88,6 +178,12 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
         {layout === 'left' && <SidewaysLeft send={send} theme={theme} profile={profile} />}
         {layout === 'right' && <SidewaysRight send={send} theme={theme} profile={profile} />}
       </View>
+
+      {/* Aviso accionable del server, bajo el topbar */}
+      <StatusBanner message={bannerMsg} top={TOPBAR_H} />
+
+      {/* Velo de reconexión sobre el body */}
+      <ReconnectOverlay status={status} host={host} />
 
       {/* Animación de acople al conectar (encima de todo, no toca input) */}
       <ConnectOverlay status={status} theme={theme} name={profile.name} />
@@ -304,7 +400,7 @@ const s = StyleSheet.create({
   // Pad
   pad: { flex: 1, backgroundColor: C.bg },
   topBar: {
-    height: 40, // 34 → 40: hueco para los LEDs bajo el pill
+    height: TOPBAR_H, // 34 → 40: hueco para los LEDs bajo el pill
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -317,6 +413,52 @@ const s = StyleSheet.create({
   playerPill: { paddingHorizontal: 12, paddingVertical: 3, borderRadius: 10 },
   playerPillText: { color: '#fff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
   statusText: { color: C.inkDim, fontSize: 10 },
+  latencyWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  latencyDot: { width: 6, height: 6, borderRadius: 3 },
+  latencyText: {
+    color: C.inkDim,
+    fontSize: 9,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+
+  // Overlay de reconexión (cubre el body, no el topbar)
+  reconnWrap: {
+    position: 'absolute',
+    top: TOPBAR_H,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(11,13,18,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 90,
+  },
+  reconnCard: {
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 18,
+    paddingHorizontal: 26,
+    borderRadius: 18,
+    backgroundColor: 'rgba(11,13,18,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  reconnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  reconnHost: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
   compactToggle: {
     position: 'absolute',
     right: 12,
