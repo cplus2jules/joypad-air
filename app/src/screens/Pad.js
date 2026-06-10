@@ -107,7 +107,7 @@ function SidewaysLeft({ send, theme, profile }) {
 
       {/* stick on right */}
       <View style={s.swStickRight}>
-        <Stick stickId="L" send={send} />
+        <Stick stickId="L" send={send} floating={profile.stickFloating} />
       </View>
 
       {/* bottom: minus + capture */}
@@ -146,7 +146,7 @@ function SidewaysRight({ send, theme, profile }) {
 
       {/* stick on left */}
       <View style={s.swStickLeft}>
-        <Stick stickId="R" send={send} />
+        <Stick stickId="R" send={send} floating={profile.stickFloating} />
       </View>
 
       {/* ABXY on right (rotated so it sits like sideways) */}
@@ -196,7 +196,7 @@ function LeftJoycon({ send, compact, theme, profile }) {
         </View>
 
         <View style={compact ? s.stickWrapCenter : s.stickWrap}>
-          <Stick stickId="L" send={send} big={compact} />
+          <Stick stickId="L" send={send} big={compact} floating={profile.stickFloating} />
         </View>
 
         {!compact && (
@@ -246,7 +246,7 @@ function RightJoycon({ send, compact, theme, profile }) {
 
         {!compact && (
           <View style={s.stickWrapRight}>
-            <Stick stickId="R" send={send} />
+            <Stick stickId="R" send={send} floating={profile.stickFloating} />
           </View>
         )}
 

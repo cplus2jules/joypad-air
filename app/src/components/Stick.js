@@ -2,11 +2,16 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { SHADOW } from '../theme';
-import { depth } from '../haptics';
+import { depth, getIntensity, haptic } from '../haptics';
 
 // ── Analog Stick (with depressed bowl + raised thumb) ───
-export default function Stick({ stickId, send, big }) {
+// `floating` (default true): el origen del arrastre es donde apoyaste el
+// dedo (translation). Con false (modo FIJO del perfil, stickFloating=false)
+// se usan coordenadas absolutas dentro del contenedor — tocar el borde del
+// bowl deflecta de inmediato, como un stick físico.
+export default function Stick({ stickId, send, big, floating = true }) {
   const RADIUS = big ? 95 : 55;
+  const CENTER = big ? 115 : 65; // mitad del contenedor (230 / 130)
   // OJO: el valor ENVIADO al server es crudo [-1,1] (solo clamp al radio).
   // La deadzone/curva del stick viven en el server (stick-engine, mensaje config).
   // SENSITIVITY y DEADZONE se conservan SOLO para los thresholds de háptica.
@@ -85,10 +90,12 @@ export default function Stick({ stickId, send, big }) {
       lastDirRef.current = { x: dirX, y: dirY };
     }
 
-    // Edge pulse: vibración continua al tope
+    // Edge-feel: golpe seco único al ENTRAR al borde + pulso light
+    // cada 250ms mientras siga al tope
     const atEdge = rawDist > RADIUS - 2;
     if (atEdge && !atEdgeRef.current) {
       atEdgeRef.current = true;
+      if (getIntensity() !== 'off') haptic.rigid();
       startEdgePulse();
     } else if (!atEdge && atEdgeRef.current) {
       atEdgeRef.current = false;
@@ -111,16 +118,20 @@ export default function Stick({ stickId, send, big }) {
   };
 
   const onRelease = () => {
-    // sin haptic en release tampoco
     stopEdgePulse();
     atEdgeRef.current = false;
     softActiveRef.current = false;
+    // Snap-back seco con micro-overshoot (tension alta, friction justa)
     Animated.spring(pan, {
       toValue: { x: 0, y: 0 },
       useNativeDriver: true,
-      friction: 6,
-      tension: 80,
+      friction: 7,
+      tension: 180,
     }).start();
+    // tick sutil a la "llegada" al centro (~90ms tras soltar)
+    setTimeout(() => {
+      if (getIntensity() !== 'off') haptic.light();
+    }, 90);
     Animated.parallel([
       Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 280, friction: 9 }),
       Animated.timing(glow, { toValue: 0, duration: 200, useNativeDriver: true }),
@@ -135,11 +146,19 @@ export default function Stick({ stickId, send, big }) {
         .runOnJS(true)
         .minDistance(0)
         .hitSlop(25)
-        .onBegin(onGrab)
-        .onUpdate((e) => onMove(e.translationX, e.translationY))
+        .onBegin((e) => {
+          onGrab();
+          // modo fijo: deflexión inmediata desde el primer contacto
+          if (!floating) onMove(e.x - CENTER, e.y - CENTER);
+        })
+        .onUpdate((e) => {
+          if (floating) onMove(e.translationX, e.translationY);
+          else onMove(e.x - CENTER, e.y - CENTER);
+        })
         .onEnd(onRelease)
         .onFinalize(() => {}),
-    []
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [floating]
   );
 
   return (
