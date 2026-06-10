@@ -1,35 +1,23 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { C } from '../theme';
 import { depth, getRepeatMs, repeatPulse } from '../haptics';
+import usePressAnimation from './usePressAnimation';
 
 // ── Recessed (deep) button — used for face / shoulders / dpad ─
-export default function RecessedBtn({ name, label, send, style, textStyle, h = 'medium', releaseHaptic = 'select' }) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const pressY = useRef(new Animated.Value(0)).current;
-  const glow = useRef(new Animated.Value(0)).current;
+// Dos modos:
+//  · Autónomo (default): registra su propio Gesture.Manual, envía
+//    {t:'btn'} y dispara haptics — comportamiento histórico.
+//  · Presentacional: si se pasa la prop `pressed` (bool), NO registra
+//    gestos ni envía nada; solo anima según la prop. El gesto, los
+//    haptics y el send viven en el padre (DPad unificado, clusters).
+export default function RecessedBtn({ name, label, send, style, textStyle, h = 'medium', pressed }) {
+  const { scale, pressY, glowOpacity, animateIn, animateOut } = usePressAnimation();
   const repeatRef = useRef(null);
   const pressedRef = useRef(false);
-
-  const animateIn = () => {
-    Animated.parallel([
-      // press más profundo + snappier (más tensión)
-      Animated.spring(scale, { toValue: 0.84, useNativeDriver: true, tension: 380, friction: 9 }),
-      Animated.spring(pressY, { toValue: 5, useNativeDriver: true, tension: 380, friction: 9 }),
-      // flash de glow rápido
-      Animated.timing(glow, { toValue: 1, duration: 50, useNativeDriver: true }),
-    ]).start();
-  };
-  const animateOut = () => {
-    Animated.parallel([
-      // release con rebote (bounciness alta)
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 240, friction: 6, restSpeedThreshold: 0.001 }),
-      Animated.spring(pressY, { toValue: 0, useNativeDriver: true, tension: 240, friction: 6 }),
-      Animated.timing(glow, { toValue: 0, duration: 220, useNativeDriver: true }),
-    ]).start();
-  };
+  const controlled = pressed !== undefined;
 
   // Mapa h-prop → patrón de profundidad
   const depthIn  = { medium: depth.buttonIn,  heavy: depth.triggerIn,  light: depth.shoulderIn,  select: depth.dpadIn  }[h] || depth.buttonIn;
@@ -58,6 +46,16 @@ export default function RecessedBtn({ name, label, send, style, textStyle, h = '
     send({ t: 'btn', k: name, d: false });
   };
 
+  // Modo presentacional: animar solo cuando la prop cambia de verdad
+  useEffect(() => {
+    if (!controlled) return;
+    if (pressed === pressedRef.current) return;
+    pressedRef.current = pressed;
+    if (pressed) animateIn();
+    else animateOut();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlled, pressed]);
+
   const gesture = useMemo(
     () =>
       Gesture.Manual()
@@ -79,36 +77,36 @@ export default function RecessedBtn({ name, label, send, style, textStyle, h = '
     []
   );
 
-  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.85] });
-
-  return (
-    <GestureDetector gesture={gesture}>
-      <View style={style}>
-        <Animated.View
-          pointerEvents="none"
-          style={[s.btnGlow, { opacity: glowOpacity }]}
-        />
-        <Animated.View
-          style={[
-            s.btnAnimWrap,
-            { transform: [{ scale }, { translateY: pressY }] },
-          ]}
-        >
-          <View style={s.btnRim}>
-            <LinearGradient
-              colors={['#3a3d45', '#1a1c22', '#08090c']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={s.btnGradient}
-            >
-              <View style={s.btnHighlight} />
-              <Text style={[s.btnText, textStyle]}>{label}</Text>
-            </LinearGradient>
-          </View>
-        </Animated.View>
-      </View>
-    </GestureDetector>
+  const body = (
+    <View style={style}>
+      <Animated.View
+        pointerEvents="none"
+        style={[s.btnGlow, { opacity: glowOpacity }]}
+      />
+      <Animated.View
+        style={[
+          s.btnAnimWrap,
+          { transform: [{ scale }, { translateY: pressY }] },
+        ]}
+      >
+        <View style={s.btnRim}>
+          <LinearGradient
+            colors={['#3a3d45', '#1a1c22', '#08090c']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={s.btnGradient}
+          >
+            <View style={s.btnHighlight} />
+            <Text style={[s.btnText, textStyle]}>{label}</Text>
+          </LinearGradient>
+        </View>
+      </Animated.View>
+    </View>
   );
+
+  // Presentacional: sin GestureDetector — los toques los captura el padre
+  if (controlled) return body;
+  return <GestureDetector gesture={gesture}>{body}</GestureDetector>;
 }
 
 const s = StyleSheet.create({
