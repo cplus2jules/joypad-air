@@ -36,6 +36,7 @@ export function SymbolBtn({ name, symbol, send, dark }) {
     () =>
       Gesture.Manual()
         .runOnJS(true)
+        .hitSlop(10)
         .onTouchesDown((_e, m) => { m.activate(); grant(); })
         .onTouchesUp((e, m) => { if (e.numberOfTouches === 0) { release(); m.end(); } })
         .onTouchesCancelled((_e, m) => { release(); m.end(); }),
@@ -77,6 +78,7 @@ export function CaptureBtn({ send }) {
     () =>
       Gesture.Manual()
         .runOnJS(true)
+        .hitSlop(12)
         .onTouchesDown((_e, m) => { m.activate(); grant(); })
         .onTouchesUp((e, m) => { if (e.numberOfTouches === 0) { release(); m.end(); } })
         .onTouchesCancelled((_e, m) => { release(); m.end(); }),
@@ -120,6 +122,7 @@ export function HomeBtn({ send }) {
     () =>
       Gesture.Manual()
         .runOnJS(true)
+        .hitSlop(10)
         .onTouchesDown((_e, m) => { m.activate(); grant(); })
         .onTouchesUp((e, m) => { if (e.numberOfTouches === 0) { release(); m.end(); } })
         .onTouchesCancelled((_e, m) => { release(); m.end(); }),

@@ -134,6 +134,7 @@ export default function Stick({ stickId, send, big }) {
       Gesture.Pan()
         .runOnJS(true)
         .minDistance(0)
+        .hitSlop(25)
         .onBegin(onGrab)
         .onUpdate((e) => onMove(e.translationX, e.translationY))
         .onEnd(onRelease)

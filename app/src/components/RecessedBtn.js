@@ -13,7 +13,9 @@ import usePressAnimation from './usePressAnimation';
 //  · Presentacional: si se pasa la prop `pressed` (bool), NO registra
 //    gestos ni envía nada; solo anima según la prop. El gesto, los
 //    haptics y el send viven en el padre (DPad unificado, clusters).
-export default function RecessedBtn({ name, label, send, style, textStyle, h = 'medium', pressed }) {
+// `slop`: hitSlop del gesto (px) — agranda el target táctil sin tocar
+// el visual. Solo aplica en modo autónomo.
+export default function RecessedBtn({ name, label, send, style, textStyle, h = 'medium', pressed, slop }) {
   const { scale, pressY, glowOpacity, animateIn, animateOut } = usePressAnimation();
   const repeatRef = useRef(null);
   const pressedRef = useRef(false);
@@ -56,26 +58,27 @@ export default function RecessedBtn({ name, label, send, style, textStyle, h = '
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controlled, pressed]);
 
-  const gesture = useMemo(
-    () =>
-      Gesture.Manual()
-        .runOnJS(true)
-        .onTouchesDown((_e, manager) => {
-          manager.activate();
-          doPressIn();
-        })
-        .onTouchesUp((e, manager) => {
-          if (e.numberOfTouches === 0) {
-            doPressOut();
-            manager.end();
-          }
-        })
-        .onTouchesCancelled((_e, manager) => {
+  const gesture = useMemo(() => {
+    const g = Gesture.Manual()
+      .runOnJS(true)
+      .onTouchesDown((_e, manager) => {
+        manager.activate();
+        doPressIn();
+      })
+      .onTouchesUp((e, manager) => {
+        if (e.numberOfTouches === 0) {
           doPressOut();
           manager.end();
-        }),
-    []
-  );
+        }
+      })
+      .onTouchesCancelled((_e, manager) => {
+        doPressOut();
+        manager.end();
+      });
+    if (slop != null) g.hitSlop(slop);
+    return g;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const body = (
     <View style={style}>

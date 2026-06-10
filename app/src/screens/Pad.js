@@ -156,7 +156,8 @@ function SidewaysRight({ send, theme, profile }) {
             const name = fn(orig);
             return (
               <View key={name} style={[s.swFaceSlot, slotStyle]}>
-                <RecessedBtn name={name} label={name.toUpperCase()} send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} />
+                {/* slop ±8 — mismo criterio que FaceButtons (solape diagonal) */}
+                <RecessedBtn name={name} label={name.toUpperCase()} send={send} h="medium" style={s.swFaceBtn} textStyle={s.swFaceText} slop={8} />
               </View>
             );
           })}

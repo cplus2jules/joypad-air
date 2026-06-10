@@ -37,6 +37,10 @@ export default function FaceButtons({ send, big, swap }) {
               send={send}
               style={btnStyle}
               textStyle={txtStyle}
+              // ±8 (no ±12): los botones se tocan en diagonal — con slop
+              // mayor crece la zona ambigua de esquina donde dos handlers
+              // compiten por el mismo touch.
+              slop={8}
             />
           </View>
         );
