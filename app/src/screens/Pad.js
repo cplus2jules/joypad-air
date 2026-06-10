@@ -8,6 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
 import { haptic, setIntensity } from '../haptics';
+import { setClickEnabled } from '../sound';
 import { useConnection } from '../net/connection';
 import { useSettings } from '../store/settings';
 import RecessedBtn from '../components/RecessedBtn';
@@ -27,6 +28,11 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
   useEffect(() => {
     setIntensity(profile.hapticLevel);
   }, [profile.hapticLevel]);
+
+  // Click sonoro del perfil — expo-audio se carga perezoso al activar
+  useEffect(() => {
+    setClickEnabled(profile.clickSound);
+  }, [profile.clickSound]);
 
   // Acento del lado correspondiente al slot: P1 = L, P2 = R
   const accent = player === 1 ? theme.accentL : theme.accentR;

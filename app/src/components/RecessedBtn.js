@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { C } from '../theme';
 import { depth, getRepeatMs, repeatPulse } from '../haptics';
+import { playClick } from '../sound';
 import usePressAnimation from './usePressAnimation';
 
 // ── Recessed (deep) button — used for face / shoulders / dpad ─
@@ -28,6 +29,7 @@ export default function RecessedBtn({ name, label, send, style, textStyle, h = '
   const doPressIn = () => {
     if (pressedRef.current) return;
     pressedRef.current = true;
+    playClick(); // no-op si clickSound está off
     depthIn();
     animateIn();
     send({ t: 'btn', k: name, d: true });
@@ -53,8 +55,12 @@ export default function RecessedBtn({ name, label, send, style, textStyle, h = '
     if (!controlled) return;
     if (pressed === pressedRef.current) return;
     pressedRef.current = pressed;
-    if (pressed) animateIn();
-    else animateOut();
+    if (pressed) {
+      playClick(); // mismo click que el modo autónomo
+      animateIn();
+    } else {
+      animateOut();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controlled, pressed]);
 
