@@ -17,7 +17,8 @@ export default function App() {
   const [player, setPlayer] = useState(null);
   const [layout, setLayout] = useState('full'); // 'full' | 'left' | 'right'
   const [compact, setCompact] = useState(false); // oculta dpad, stick derecho, capture, home
-  const [showSettings, setShowSettings] = useState(false);
+  // null = cerrado; 1|2 = abierto con ese perfil preseleccionado
+  const [settingsSlot, setSettingsSlot] = useState(null);
 
   useEffect(() => {
     ScreenOrientation.lockAsync(
@@ -34,7 +35,7 @@ export default function App() {
             layout={layout}
             onLayout={setLayout}
             onPick={setPlayer}
-            onOpenSettings={() => setShowSettings(true)}
+            onOpenSettings={(slot) => setSettingsSlot(slot ?? player ?? 1)}
           />
         ) : (
           <Pad
@@ -43,15 +44,15 @@ export default function App() {
             compact={compact}
             onToggleCompact={() => setCompact((c) => !c)}
             onBack={() => setPlayer(null)}
-            onOpenSettings={() => setShowSettings(true)}
+            onOpenSettings={() => setSettingsSlot(player ?? 1)}
           />
         )}
         {/* Overlay: el Pad sigue montado debajo → el WS no se corta y el
             config (engage/release/nombre/tema) se reenvía en vivo */}
-        {showSettings && (
+        {settingsSlot != null && (
           <Settings
-            initialSlot={player ?? 1}
-            onClose={() => setShowSettings(false)}
+            initialSlot={settingsSlot}
+            onClose={() => setSettingsSlot(null)}
           />
         )}
       </GestureHandlerRootView>

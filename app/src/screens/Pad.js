@@ -97,13 +97,20 @@ function ReconnectOverlay({ status, host }) {
 
 // ── Pad ─────────────────────────────────────────────────
 export default function Pad({ player, layout, compact, onToggleCompact, onBack, onOpenSettings }) {
-  const { settings } = useSettings();
+  const { settings, update } = useSettings();
   const profile = settings.profiles[player] ?? settings.profiles[1];
   const theme = useMemo(() => resolveTheme(profile.themeId), [profile.themeId]);
   const { status, send, rtt, serverInfo } = useConnection(player, profile);
   const host = useMemo(() => detectHost(), []);
   const battery = useBatteryLevel(); // 0..1, o -1 mientras no hay dato
   const batteryLow = battery >= 0 && battery < 0.2;
+
+  // Primera conexión exitosa (hello del server) → onboarding completado;
+  // el Picker deja de mostrar la línea de ayuda de primera vez.
+  useEffect(() => {
+    if (serverInfo.hello && !settings.onboarded) update({ onboarded: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverInfo.hello]);
 
   // Aviso accionable del server (prioridad: accesibilidad > foco).
   // Solo con hello recibido y conectado — sin socket manda el overlay

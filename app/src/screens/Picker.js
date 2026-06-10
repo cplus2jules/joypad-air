@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Platform,
@@ -13,6 +13,45 @@ import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
 import { haptic, depth } from '../haptics';
 import { detectHost, SERVER_PORT } from '../net/connection';
 import { useSettings } from '../store/settings';
+
+const AMBER = '#faa005';
+
+// ── Estado del server vía GET /status (poll 3s) ─────────
+// Devuelve el JSON de /status o null (sin host / server caído).
+// Solo corre mientras el Picker está montado.
+function useServerStatus(host) {
+  const [info, setInfo] = useState(null);
+
+  useEffect(() => {
+    if (!host) return undefined;
+    let alive = true;
+
+    const poll = async () => {
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 2500);
+      try {
+        const res = await fetch(`http://${host}:${SERVER_PORT}/status`, {
+          signal: ctrl.signal,
+        });
+        const json = await res.json();
+        if (alive) setInfo(json);
+      } catch {
+        if (alive) setInfo(null);
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [host]);
+
+  return info;
+}
 
 // ── Background blobs (slow drift) ───────────────────────
 function FloatingBlobs() {
@@ -64,7 +103,9 @@ function FloatingBlobs() {
 }
 
 // ── Mode card (with mini joycon preview) ────────────────
-function ModeCard({ id, label, sublabel, active, onPress }) {
+// Los mini-joycons se pintan con el tema del perfil habitual (lastSlot)
+// vía colorL/colorR — con fallback a la paleta Neón.
+function ModeCard({ id, label, sublabel, active, onPress, colorL = C.red, colorR = C.blue }) {
   const scale = useRef(new Animated.Value(active ? 1.04 : 1)).current;
   const elev = useRef(new Animated.Value(active ? 1 : 0)).current;
 
@@ -79,21 +120,21 @@ function ModeCard({ id, label, sublabel, active, onPress }) {
     if (id === 'full') {
       return (
         <View style={s.previewRow}>
-          <View style={[s.miniJoy, s.miniJoyL, { backgroundColor: C.red }]} />
-          <View style={[s.miniJoy, s.miniJoyR, { backgroundColor: C.blue }]} />
+          <View style={[s.miniJoy, s.miniJoyL, { backgroundColor: colorL }]} />
+          <View style={[s.miniJoy, s.miniJoyR, { backgroundColor: colorR }]} />
         </View>
       );
     }
     if (id === 'left') {
       return (
         <View style={s.previewRow}>
-          <View style={[s.miniJoy, s.miniJoyWide, { backgroundColor: C.red }]} />
+          <View style={[s.miniJoy, s.miniJoyWide, { backgroundColor: colorL }]} />
         </View>
       );
     }
     return (
       <View style={s.previewRow}>
-        <View style={[s.miniJoy, s.miniJoyWide, { backgroundColor: C.blue }]} />
+        <View style={[s.miniJoy, s.miniJoyWide, { backgroundColor: colorR }]} />
       </View>
     );
   };
@@ -123,7 +164,10 @@ function ModeCard({ id, label, sublabel, active, onPress }) {
 }
 
 // ── Player card (huge gradient with joycon visual) ──────
-function PlayerCard({ player, onPick }) {
+// occupied: true | false | null (sin dato del server — no se pinta badge).
+// habitual: lastSlot → anillo "tu mando habitual".
+// Long-press → abre Ajustes con ese perfil preseleccionado.
+function PlayerCard({ player, onPick, occupied = null, habitual = false, onLongPress }) {
   const isP1 = player === 1;
   // Tema y nombre del perfil del jugador (P1 = lado L, P2 = lado R)
   const { settings } = useSettings();
@@ -147,54 +191,87 @@ function PlayerCard({ player, onPick }) {
   const glowOpacity = breath.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.6] });
 
   return (
-    <Pressable
-      onPressIn={() => {
-        Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, tension: 220, friction: 8 }).start();
-      }}
-      onPressOut={() => {
-        Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 280, friction: 10 }).start();
-      }}
-      onPress={() => {
-        depth.buttonIn();
-        onPick(player);
-      }}
-      style={s.playerCardWrap}
-    >
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          s.playerCardGlow,
-          { backgroundColor: accent, opacity: glowOpacity },
-        ]}
-      />
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <LinearGradient
-          colors={colors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={s.playerCard}
+    <View style={s.playerCardCol}>
+      <Pressable
+        onPressIn={() => {
+          Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, tension: 220, friction: 8 }).start();
+        }}
+        onPressOut={() => {
+          Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 280, friction: 10 }).start();
+        }}
+        onPress={() => {
+          depth.buttonIn();
+          onPick(player);
+        }}
+        onLongPress={() => {
+          haptic.medium();
+          onLongPress?.(player);
+        }}
+        delayLongPress={400}
+        style={s.playerCardWrap}
+      >
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            s.playerCardGlow,
+            { backgroundColor: accent, opacity: glowOpacity },
+          ]}
+        />
+        <Animated.View
+          style={[
+            { transform: [{ scale }] },
+            habitual && [s.playerCardRing, { borderColor: accent }],
+          ]}
         >
-          <Text
-            style={[s.playerCardNumberBg, darkInk && { color: 'rgba(0,0,0,0.22)' }]}
-            numberOfLines={1}
-            allowFontScaling={false}
+          <LinearGradient
+            colors={colors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={s.playerCard}
           >
-            {player}
-          </Text>
-          <View style={s.playerCardFg}>
             <Text
-              style={[s.playerCardKicker, darkInk && { color: 'rgba(0,0,0,0.55)' }]}
+              style={[s.playerCardNumberBg, darkInk && { color: 'rgba(0,0,0,0.22)' }]}
               numberOfLines={1}
+              allowFontScaling={false}
             >
-              {profile.name.toUpperCase()}
+              {player}
             </Text>
-            <Text style={[s.playerCardCTA, darkInk && { color: JOYCON_DARK_INK }]}>
-              Empezar ›
-            </Text>
-          </View>
-        </LinearGradient>
-      </Animated.View>
-    </Pressable>
+            <View style={s.playerCardFg}>
+              <Text
+                style={[s.playerCardKicker, darkInk && { color: 'rgba(0,0,0,0.55)' }]}
+                numberOfLines={1}
+              >
+                {profile.name.toUpperCase()}
+              </Text>
+              <Text style={[s.playerCardCTA, darkInk && { color: JOYCON_DARK_INK }]}>
+                Empezar ›
+              </Text>
+            </View>
+            {occupied != null && (
+              <View
+                style={[
+                  s.slotBadge,
+                  { backgroundColor: occupied ? 'rgba(35,21,5,0.55)' : 'rgba(0,0,0,0.35)' },
+                ]}
+              >
+                <View
+                  style={[s.slotBadgeDot, { backgroundColor: occupied ? AMBER : C.ok }]}
+                />
+                <Text
+                  style={[s.slotBadgeText, { color: occupied ? AMBER : C.ok }]}
+                  numberOfLines={1}
+                >
+                  {occupied ? 'ocupado — toca para reemplazar' : 'libre'}
+                </Text>
+              </View>
+            )}
+          </LinearGradient>
+        </Animated.View>
+      </Pressable>
+      <Text style={[s.habitualCaption, !habitual && { opacity: 0 }]} numberOfLines={1}>
+        tu mando habitual
+      </Text>
+    </View>
   );
 }
 
@@ -202,6 +279,8 @@ function PlayerCard({ player, onPick }) {
 export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
   const host = detectHost();
   const battery = useBatteryLevel(); // 0..1, o -1 mientras no hay dato
+  const { settings, ready, update } = useSettings();
+  const serverStatus = useServerStatus(host);
   const fade1 = useRef(new Animated.Value(0)).current;
   const fade2 = useRef(new Animated.Value(0)).current;
   const fade3 = useRef(new Animated.Value(0)).current;
@@ -219,6 +298,32 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
       Animated.spring(slide, { toValue: 0, useNativeDriver: true, tension: 60, friction: 10 }),
     ]).start();
   }, []);
+
+  // Restaurar el último modo usado (una sola vez, al cargar settings)
+  const layoutRestored = useRef(false);
+  useEffect(() => {
+    if (!ready || layoutRestored.current) return;
+    layoutRestored.current = true;
+    if (settings.lastLayout && settings.lastLayout !== layout) {
+      onLayout(settings.lastLayout);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
+  // Tema del mando habitual → mini-joycons de las ModeCard
+  const lastSlot = settings.lastSlot === 2 ? 2 : 1;
+  const lastTheme = resolveTheme(settings.profiles[lastSlot]?.themeId);
+
+  // Ocupación por slot según /status (null = sin dato, no se pinta badge)
+  const occupiedFor = (n) =>
+    serverStatus ? !!serverStatus.players?.[n]?.connected : null;
+
+  const pick = (player) => {
+    update({ lastSlot: player });
+    onPick(player);
+  };
+
+  const showFirstTimeHint = !host || !settings.onboarded;
 
   const layouts = [
     { id: 'full',  label: 'Pareja',     sublabel: 'Dos joycons' },
@@ -254,6 +359,12 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
           <Text style={s.batteryText}>
             🔋 {battery >= 0 ? `${Math.round(battery * 100)}%` : '—'}
           </Text>
+          {showFirstTimeHint && (
+            <Animated.Text style={[s.firstTimeHint, { opacity: fade4 }]}>
+              Primera vez: corre Play.app (o mandos.command) en el Mac y
+              conéctate a su WiFi
+            </Animated.Text>
+          )}
           <Animated.Text style={[s.footerLeft, { opacity: fade4 }]}>
             Conecta el segundo iPhone para co-op local
           </Animated.Text>
@@ -271,7 +382,12 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
                   label={l.label}
                   sublabel={l.sublabel}
                   active={layout === l.id}
-                  onPress={() => onLayout(l.id)}
+                  colorL={lastTheme.L[1]}
+                  colorR={lastTheme.R[1]}
+                  onPress={() => {
+                    onLayout(l.id);
+                    update({ lastLayout: l.id });
+                  }}
                 />
               ))}
             </View>
@@ -280,8 +396,16 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
           <Animated.View style={[s.playerBlock, { opacity: fade3 }]}>
             <Text style={s.proSectionLabel}>Jugador</Text>
             <View style={s.playerGrid}>
-              <PlayerCard player={1} onPick={onPick} />
-              <PlayerCard player={2} onPick={onPick} />
+              {[1, 2].map((n) => (
+                <PlayerCard
+                  key={n}
+                  player={n}
+                  onPick={pick}
+                  occupied={occupiedFor(n)}
+                  habitual={lastSlot === n}
+                  onLongPress={onOpenSettings}
+                />
+              ))}
             </View>
           </Animated.View>
         </View>
@@ -479,9 +603,16 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     gap: 14,
   },
-  playerCardWrap: {
+  playerCardCol: {
     flex: 1,
+  },
+  playerCardWrap: {
     position: 'relative',
+  },
+  playerCardRing: {
+    borderWidth: 2,
+    borderRadius: 24,
+    padding: 3,
   },
   playerCardGlow: {
     position: 'absolute',
@@ -533,6 +664,41 @@ const s = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  slotBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    maxWidth: '80%',
+  },
+  slotBadgeDot: { width: 5, height: 5, borderRadius: 3 },
+  slotBadgeText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  habitualCaption: {
+    marginTop: 6,
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  firstTimeHint: {
+    color: 'rgba(250,160,5,0.85)',
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 0.3,
+    marginTop: 8,
   },
   footerLeft: {
     color: 'rgba(255,255,255,0.3)',
