@@ -694,6 +694,13 @@ async function toggleMotion() {
     sendConfig();
     return;
   }
+  // iOS BLOQUEA los sensores de movimiento en páginas http (contexto no
+  // seguro): requestPermission ni existe y devicemotion jamás dispara.
+  // Antes el botón se encendía y no pasaba nada — mejor decir la verdad.
+  if (!window.isSecureContext) {
+    flashBanner("iOS bloquea el giroscopio en la versión web (necesita HTTPS) — para jugar con giro usa la app nativa");
+    return;
+  }
   // iOS exige pedir permiso dentro de un gesto del usuario
   try {
     if (typeof DeviceMotionEvent !== "undefined" &&
