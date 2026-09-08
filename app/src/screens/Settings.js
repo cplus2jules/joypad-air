@@ -14,13 +14,15 @@ import Slider from '@react-native-community/slider';
 import { C, JOYCON_THEMES, resolveTheme } from '../theme';
 import { haptic, depth, getIntensity, setIntensity } from '../haptics';
 import { useMotionSample } from '../motion';
+import { useI18n } from '../i18n';
+import LanguagePicker from '../components/LanguagePicker';
 import { useSettings } from '../store/settings';
 
 const HAPTIC_LEVELS = [
-  { id: 'off', label: 'Off' },
-  { id: 'soft', label: 'Suave' },
-  { id: 'normal', label: 'Normal' },
-  { id: 'strong', label: 'Fuerte' },
+  { id: 'off', label: 'off' },
+  { id: 'soft', label: 'soft' },
+  { id: 'normal', label: 'normal' },
+  { id: 'strong', label: 'strong' },
 ];
 
 const MIN_RELEASE = 0.10;
@@ -35,7 +37,8 @@ function SectionLabel({ children }) {
   return <Text style={s.sectionLabel}>{children}</Text>;
 }
 
-function ThemeSwatch({ def, active, onPress }) {
+function ThemeSwatch({ id, def, active, onPress }) {
+  const { t } = useI18n();
   return (
     <Pressable onPress={onPress} style={s.swatchWrap}>
       <View
@@ -59,7 +62,7 @@ function ThemeSwatch({ def, active, onPress }) {
           />
         </View>
         <Text style={[s.swatchLabel, active && { color: '#fff' }]} numberOfLines={1}>
-          {def.label}
+          {t(`theme.${id}`)}
         </Text>
       </View>
     </Pressable>
@@ -129,6 +132,7 @@ function SliderRow({ label, value, display, min, max, accent, onChange }) {
         <Text style={[s.rowValue, { color: accent }]}>{display}</Text>
       </View>
       <Slider
+        accessibilityLabel={label}
         style={s.slider}
         minimumValue={min}
         maximumValue={max}
@@ -148,6 +152,7 @@ function ToggleRow({ label, value, accent, onChange }) {
     <View style={s.toggleRow}>
       <Text style={s.rowLabel}>{label}</Text>
       <Switch
+        accessibilityLabel={label}
         value={value}
         onValueChange={(v) => {
           haptic.select();
@@ -166,6 +171,7 @@ function ToggleRow({ label, value, accent, onChange }) {
 // abrió desde el Picker) — la intensidad háptica GLOBAL solo debe
 // seguir a ese perfil, no al que se esté editando.
 export default function Settings({ initialSlot = 1, activePlayer = null, onClose }) {
+  const { t } = useI18n();
   const { settings, updateProfile } = useSettings();
   const [slot, setSlot] = useState(initialSlot === 2 ? 2 : 1);
   // Muestra en vivo del acelerómetro — solo existe con GIRO activo en el Pad
@@ -181,10 +187,10 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot]);
 
-  const defaultName = `Chocorramito ${slot}`;
+  const defaultName = t('player', { n: slot });
   const commitName = (raw) => {
     const trimmed = (raw ?? '').trim();
-    const finalName = trimmed || defaultName; // vacío → vuelve al default
+    const finalName = trimmed; // vacío → vuelve al default
     setName(finalName);
     updateProfile(slot, { name: finalName });
   };
@@ -255,17 +261,19 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
             haptic.light();
             onClose();
           }}
+          accessibilityRole="button"
+          accessibilityLabel={t('back')}
           style={s.backBtn}
           hitSlop={10}
         >
           <Text style={s.backText}>‹</Text>
         </Pressable>
-        <Text style={s.title}>AJUSTES</Text>
+        <Text style={s.title}>{t('settings').toUpperCase()}</Text>
         <View style={s.slotRow}>
           {[1, 2].map((n) => {
             const p = settings.profiles[n];
-            const t = resolveTheme(p.themeId);
-            const a = n === 1 ? t.accentL : t.accentR;
+            const profileTheme = resolveTheme(p.themeId);
+            const a = n === 1 ? profileTheme.accentL : profileTheme.accentR;
             const active = slot === n;
             return (
               <Pressable
@@ -278,7 +286,7 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
               >
                 <View style={[s.slotDot, { backgroundColor: a }]} />
                 <Text style={[s.slotChipText, active && { color: '#fff' }]} numberOfLines={1}>
-                  {p.name.toUpperCase()}
+                  {(p.name || t('player', { n })).toUpperCase()}
                 </Text>
                 {active && <Text style={[s.slotCaret, { color: a }]}>▾</Text>}
               </Pressable>
@@ -290,7 +298,9 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
       <View style={s.columns}>
         {/* ── Columna izquierda: identidad ── */}
         <ScrollView style={s.col} contentContainerStyle={s.colContent} showsVerticalScrollIndicator={false}>
-          <SectionLabel>Nombre</SectionLabel>
+          <SectionLabel>{t('language')}</SectionLabel>
+          <LanguagePicker />
+          <SectionLabel>{t('name')}</SectionLabel>
           <TextInput
             style={[s.nameInput, { borderColor: name.trim() ? 'rgba(255,255,255,0.14)' : C.err }]}
             value={name}
@@ -302,6 +312,7 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
             onBlur={() => commitName(name)}
             maxLength={14}
             placeholder={defaultName}
+            accessibilityLabel={t('name')}
             placeholderTextColor="rgba(255,255,255,0.25)"
             autoCorrect={false}
             autoCapitalize="words"
@@ -309,11 +320,12 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
             keyboardAppearance="dark"
           />
 
-          <SectionLabel>Color</SectionLabel>
+          <SectionLabel>{t('theme')}</SectionLabel>
           <View style={s.swatchGrid}>
             {Object.entries(JOYCON_THEMES).map(([id, def]) => (
               <ThemeSwatch
                 key={id}
+                id={id}
                 def={def}
                 active={profile.themeId === id}
                 onPress={() => {
@@ -329,10 +341,10 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
 
         {/* ── Columna derecha: stick + botones ── */}
         <ScrollView style={s.col} contentContainerStyle={s.colContent} showsVerticalScrollIndicator={false}>
-          <SectionLabel>Stick</SectionLabel>
+          <SectionLabel>{t('sticks')}</SectionLabel>
           <View style={s.card}>
             <SliderRow
-              label="Activación"
+              label={t('engage')}
               value={profile.engage}
               display={pct(profile.engage)}
               min={0.30}
@@ -341,7 +353,7 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
               onChange={onEngage}
             />
             <SliderRow
-              label="Liberación"
+              label={t('release')}
               value={profile.release}
               display={pct(profile.release)}
               min={MIN_RELEASE}
@@ -350,16 +362,16 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
               onChange={onRelease}
             />
             <ToggleRow
-              label="Stick flotante"
+              label={t('floatingStick')}
               value={profile.stickFloating}
               accent={accent}
               onChange={(v) => updateProfile(slot, { stickFloating: v })}
             />
           </View>
 
-          <SectionLabel>Botones</SectionLabel>
+          <SectionLabel>{t('buttons')}</SectionLabel>
           <View style={s.card}>
-            <Text style={s.rowLabel}>Háptica</Text>
+            <Text style={s.rowLabel}>{t('haptics')}</Text>
             <View style={s.chipRow}>
               {HAPTIC_LEVELS.map((lvl) => {
                 const active = profile.hapticLevel === lvl.id;
@@ -369,13 +381,13 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
                     onPress={() => pickHaptic(lvl.id)}
                     style={[s.hChip, active && { borderColor: accent, backgroundColor: 'rgba(255,255,255,0.10)' }]}
                   >
-                    <Text style={[s.hChipText, active && { color: '#fff' }]}>{lvl.label}</Text>
+                    <Text style={[s.hChipText, active && { color: '#fff' }]}>{t(lvl.label)}</Text>
                   </Pressable>
                 );
               })}
             </View>
             <SliderRow
-              label="Tamaño"
+              label={t('buttonSize')}
               value={profile.buttonScale}
               display={pct(profile.buttonScale)}
               min={0.9}
@@ -384,13 +396,13 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
               onChange={(v) => updateProfile(slot, { buttonScale: round2(v) })}
             />
             <ToggleRow
-              label="Swap A/B · X/Y (Xbox)"
+              label={t('swap')}
               value={profile.swapAB}
               accent={accent}
               onChange={(v) => updateProfile(slot, { swapAB: v })}
             />
             <ToggleRow
-              label="Sonido de click"
+              label={t('clickSound')}
               value={profile.clickSound}
               accent={accent}
               onChange={(v) => updateProfile(slot, { clickSound: v })}
@@ -399,12 +411,12 @@ export default function Settings({ initialSlot = 1, activePlayer = null, onClose
 
           {motionSample && (
             <>
-              <SectionLabel>Giroscopio</SectionLabel>
+              <SectionLabel>{t('gyroHeading')}</SectionLabel>
               <View style={s.card}>
                 <Text style={s.motionMono}>
                   {`ax ${fmtG(motionSample.ax)}   ay ${fmtG(motionSample.ay)}   az ${fmtG(motionSample.az)}`}
                 </Text>
-                <Text style={s.motionLegend}>plano boca arriba ⇒ az ≈ -1.00</Text>
+                <Text style={s.motionLegend}>{t('gyroLegend')}</Text>
               </View>
             </>
           )}

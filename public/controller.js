@@ -5,6 +5,7 @@
 //   → {t:'ping',ts,rtt} cada 2s · {t:'motion',gx,gy,gz,ax,ay,az,ts} ~60Hz
 //   ← {t:'hello'} · {t:'pong'} · {t:'focus'} · {t:'slots'} · {t:'accessibility'}
 
+import { t, initLanguage, onLanguageChange } from "./i18n.js";
 import { THEMES, DEFAULT_THEME, applyTheme } from "./themes.js";
 import { haptic, setHapticMode, initHaptics } from "./haptics.js";
 
@@ -18,7 +19,7 @@ const LEGACY_PLAYER_KEY = "switchpad.player";
 
 const DEFAULT_SETTINGS = {
   player: null, // último slot usado (1|2)
-  names: { 1: "Chocorramito 1", 2: "Chocorramito 2" },
+  names: { 1: "", 2: "" },
   theme: DEFAULT_THEME,
   engage: 0.55,
   release: 0.4,
@@ -41,11 +42,12 @@ function loadSettings() {
   if (!["off", "suave", "normal", "fuerte"].includes(s.haptics)) s.haptics = "normal";
   if (s.player !== 1 && s.player !== 2) {
     // migración desde la PWA v1
-    const legacy = Number(localStorage.getItem(LEGACY_PLAYER_KEY));
+    let legacy;
+    try { legacy = Number(localStorage.getItem(LEGACY_PLAYER_KEY)); } catch { /* Storage disabled. */ }
     s.player = legacy === 1 || legacy === 2 ? legacy : null;
   }
   for (const n of [1, 2]) {
-    if (typeof s.names[n] !== "string" || !s.names[n].trim()) s.names[n] = `Chocorramito ${n}`;
+    if (typeof s.names[n] !== "string" || !s.names[n].trim()) s.names[n] = "";
     s.names[n] = s.names[n].slice(0, 14);
   }
   return s;
@@ -68,6 +70,7 @@ const state = {
   accessibilityOk: true,   // true | false | "unknown"
   nativeOk: true,          // false ⇒ nut-js no cargó en el Mac (modo log)
   orientation: "landscape-right",
+  ryujinx: null,
 };
 
 // Pointers reclamados por un control con superficie propia (stick, d-pad,
@@ -109,7 +112,8 @@ function send(obj) {
 function setWsStatus(status) {
   state.wsStatus = status;
   // Overlay de reconexión: solo cuando el WS cayó (no en el primer intento)
-  elReconnect.hidden = !(padVisible() && status === "reconnecting");
+  elReconnect.hidden = !(padVisible() && ["connecting", "reconnecting"].includes(status));
+  $("#pad-connection").textContent = t(status === "open" ? "pad.connectedMac" : "pad.connectingMac");
   // LED del slot parpadea si no hay conexión
   $$(".led.on", elPad).forEach((led) => led.classList.toggle("blink", status !== "open"));
   if (status !== "open") { state.rtt = null; updateLatency(); }
@@ -156,7 +160,7 @@ function wsConnect() {
       // infinito). De vuelta al picker, con aviso visible.
       shouldReconnect = false;
       showPicker();
-      showPickerToast("Otro mando tomó tu slot");
+      showPickerToast("takeover");
       return;
     }
     if (shouldReconnect) {
@@ -202,6 +206,7 @@ function handleServerMessage(msg) {
   switch (msg.t) {
     case "hello":
       state.accessibilityOk = msg.accessibility;
+      state.ryujinx = msg.ryujinx ?? null;
       // native:false ⇒ las teclas se imprimen en consola y no llegan a
       // Ryujinx (también con FORCE_LOG=1, donde el aviso es igual de cierto)
       state.nativeOk = msg.native !== false;
@@ -226,6 +231,10 @@ function handleServerMessage(msg) {
       state.accessibilityOk = !!msg.ok;
       updateBanner();
       break;
+    case "ryujinx":
+      state.ryujinx = msg.state;
+      updateBanner();
+      break;
     case "slots":
       // los LEDs muestran solo el slot propio; nada que hacer aquí
       break;
@@ -236,7 +245,7 @@ function sendConfig() {
   if (!state.player) return;
   send({
     t: "config",
-    name: settings.names[state.player],
+    name: settings.names[state.player] || `Player ${state.player}`,
     theme: settings.theme,
     orientation: state.orientation,
     engage: settings.engage,
@@ -267,24 +276,30 @@ $("#lat-btn").addEventListener("click", () => {
 
 // ─── Banner de estado (ámbar) ───────────────────────────────────────────────
 let bannerFlashTimer = null;
+let bannerFlashKey = null;
 
 function bannerMessage() {
   // Prioridad: accesibilidad > teclado nativo > foco
   if (state.accessibilityOk === false) {
-    return "Falta el permiso de Accesibilidad en el Mac — mira la Terminal";
+    return t("accessBanner");
   }
   if (state.nativeOk === false) {
-    return "El teclado nativo no cargó en el Mac — mira la Terminal (modo log)";
+    return t("nativeBanner");
+  }
+  if (state.ryujinx?.synced === false) {
+    return t("pad.profileHelp");
   }
   if (state.focusOk === false) {
-    return "Ryujinx no tiene el foco — haz click en su ventana";
+    return t("focusBanner");
   }
   return null;
 }
 
 function updateBanner() {
+  requestAnimationFrame(cacheTriggerRects);
   if (bannerFlashTimer) return; // un flash temporal tiene prioridad
   const msg = bannerMessage();
+  $("#pad-connection").textContent = t(state.wsStatus !== "open" ? "pad.connectingMac" : msg ? "pad.needsSetup" : "pad.inputReady");
   if (msg) {
     elBanner.textContent = msg;
     elBanner.classList.add("show");
@@ -293,12 +308,15 @@ function updateBanner() {
   }
 }
 
-function flashBanner(msg, ms = 3000) {
+function flashBanner(key, ms = 3000) {
+  bannerFlashKey = key;
   clearTimeout(bannerFlashTimer);
-  elBanner.textContent = msg;
+  elBanner.textContent = t(key);
   elBanner.classList.add("show");
+  requestAnimationFrame(cacheTriggerRects);
   bannerFlashTimer = setTimeout(() => {
     bannerFlashTimer = null;
+    bannerFlashKey = null;
     updateBanner();
   }, ms);
 }
@@ -309,7 +327,7 @@ function bindPressButton(el, { level = "medium", getKey } = {}) {
   const key = getKey || (() => el.dataset.key);
 
   const press = (e) => {
-    if (pid !== null) return;
+    if (!padVisible() || settingsOpen() || state.wsStatus !== "open" || pid !== null) return;
     e.preventDefault();
     pid = e.pointerId;
     claimed.add(pid);
@@ -334,6 +352,12 @@ function bindPressButton(el, { level = "medium", getKey } = {}) {
     haptic("light");
   };
 
+  el.addEventListener("keydown", (e) => {
+    if (![" ", "Enter"].includes(e.key) || e.repeat) return;
+    press({ preventDefault: () => e.preventDefault(), pointerId: -1 });
+  });
+  el.addEventListener("keyup", (e) => { if ([" ", "Enter"].includes(e.key)) { e.preventDefault(); release(); } });
+  el.addEventListener("blur", release);
   el.addEventListener("pointerdown", press);
   el.addEventListener("pointerup", (e) => { if (e.pointerId === pid) release(); });
   el.addEventListener("pointercancel", (e) => { if (e.pointerId === pid) release(); });
@@ -575,6 +599,17 @@ function triggerRelease(seg) {
   }
 }
 
+for (const seg of triggerSegs) {
+  let keyHeld = false;
+  seg.el.addEventListener("keydown", e => {
+    if (!["Enter", " "].includes(e.key) || e.repeat || settingsOpen()) return;
+    e.preventDefault(); keyHeld = true; triggerPress(seg);
+  });
+  const release = () => { if (keyHeld) { keyHeld = false; triggerRelease(seg); } };
+  seg.el.addEventListener("keyup", e => { if (["Enter", " "].includes(e.key)) { e.preventDefault(); release(); } });
+  seg.el.addEventListener("blur", release);
+}
+
 function triggerTrackMove(e) {
   const prev = triggerPointers.get(e.pointerId);
   const seg = segAt(e.clientX, e.clientY);
@@ -639,6 +674,9 @@ function releaseAllTriggers() {
 // d:false que emiten releaseAllTriggers/_forceRelease son inofensivos (el
 // server ignora releases de teclas no presionadas).
 function resetLocalControls() {
+  // Neutralize the server too: settings/blur may happen while the socket stays open.
+  for (const stick of ["L", "R"]) send({ t: "stick", s: stick, x: 0, y: 0 });
+  for (const dir of ["up", "down", "left", "right"]) send({ t: "btn", k: `dpad_${dir}`, d: false });
   releaseAllTriggers();
   $$(".face-btn, .sym-btn", elPad).forEach((el) => {
     if (typeof el._forceRelease === "function") el._forceRelease();
@@ -698,7 +736,7 @@ async function toggleMotion() {
   // seguro): requestPermission ni existe y devicemotion jamás dispara.
   // Antes el botón se encendía y no pasaba nada — mejor decir la verdad.
   if (!window.isSecureContext) {
-    flashBanner("iOS bloquea el giroscopio en la versión web (necesita HTTPS) — para jugar con giro usa la app nativa");
+    flashBanner("gyroHttp");
     return;
   }
   // iOS exige pedir permiso dentro de un gesto del usuario
@@ -707,12 +745,12 @@ async function toggleMotion() {
         typeof DeviceMotionEvent.requestPermission === "function") {
       const res = await DeviceMotionEvent.requestPermission();
       if (res !== "granted") {
-        flashBanner("Permiso de movimiento denegado — actívalo en Ajustes de Safari");
+        flashBanner("gyroDenied");
         return;
       }
     }
   } catch {
-    flashBanner("No se pudo pedir el permiso de movimiento");
+    flashBanner("gyroError");
     return;
   }
   state.motionOn = true;
@@ -736,7 +774,8 @@ function computeOrientation() {
 
 function checkRotateHint() {
   const portrait = window.innerHeight > window.innerWidth;
-  elRotate.hidden = !(padVisible() && portrait);
+  const needsLandscape = window.innerWidth <= 600 || matchMedia("(pointer: coarse)").matches;
+  elRotate.hidden = !(padVisible() && portrait && needsLandscape);
 }
 
 function onOrientationOrResize() {
@@ -771,29 +810,34 @@ document.addEventListener("visibilitychange", () => {
 
 // ─── Picker: tarjetas + /status cada 3s ─────────────────────────────────────
 let statusTimer = null;
+let lastCardStatus;
 
 function updateCardNames() {
   for (const n of [1, 2]) {
-    $(`[data-card-name="${n}"]`).textContent = settings.names[n];
+    $(`[data-card-name="${n}"]`).textContent = settings.names[n] || t("player", { n });
   }
 }
 
 function updateCards(data) {
+  const ready = data?.ryujinx?.synced && data.native && data.accessibility === true;
+  $("#lobby-status").textContent = t(!data ? "lobby.offline" : ready ? "lobby.ready" : "lobby.needsSetup");
+  $("#lobby-dot").className = `dot ${data ? ready ? "free" : "busy" : ""}`;
+  lastCardStatus = data;
   for (const n of [1, 2]) {
     const dot = $(`[data-card-dot="${n}"]`);
     const txt = $(`[data-card-status="${n}"]`);
     const p = data && data.players && data.players[n];
     if (!p) {
       dot.className = "dot";
-      txt.textContent = data === null ? "Servidor no responde" : "…";
+      txt.textContent = t(data === null ? "serverOffline" : "searching");
       continue;
     }
     if (p.connected) {
       dot.className = "dot busy";
-      txt.textContent = p.name ? `Ocupado · ${p.name}` : "Ocupado";
+      txt.textContent = p.name ? t("occupiedBy", { name: p.name }) : t("occupied");
     } else {
       dot.className = "dot free";
-      txt.textContent = "Libre";
+      txt.textContent = t("available");
     }
   }
 }
@@ -818,10 +862,12 @@ function stopStatusPoll() {
   statusTimer = null;
 }
 
-// Toast del picker (aviso temporal — p. ej. «Otro mando tomó tu slot»)
+// Toast del picker (aviso temporal — p. ej. «Another controller took this player slot. Choose a free player.»)
 let pickerToastTimer = null;
-function showPickerToast(msg, ms = 4000) {
-  elPickerToast.textContent = msg;
+let pickerToastKey = null;
+function showPickerToast(key, ms = 4000) {
+  pickerToastKey = key;
+  elPickerToast.textContent = t(key);
   elPickerToast.classList.add("show");
   clearTimeout(pickerToastTimer);
   pickerToastTimer = setTimeout(() => elPickerToast.classList.remove("show"), ms);
@@ -835,6 +881,7 @@ function markLastCard() {
 
 // ─── Navegación de pantallas ────────────────────────────────────────────────
 function showPicker() {
+  resetLocalControls();
   wsClose();
   stopMotion();
   releaseAllTriggers();
@@ -853,13 +900,13 @@ function showPad(player) {
   state.player = player;
   settings.player = player;
   saveSettings();
-  stopStatusPoll();
+  startStatusPoll();
 
   elPicker.hidden = true;
   elPad.hidden = false;
   elPad.dataset.player = String(player);
 
-  elPillName.textContent = settings.names[player];
+  elPillName.textContent = settings.names[player] || t("player", { n: player });
   $$(".led", elPad).forEach((led) => {
     const on = Number(led.dataset.led) === player;
     led.classList.toggle("on", on);
@@ -885,6 +932,8 @@ $$(".card", elPicker).forEach((card) => {
   });
 });
 
+$("#rotate-back").addEventListener("click", showPicker);
+
 $("#btn-back").addEventListener("click", () => {
   haptic("light");
   showPicker();
@@ -902,7 +951,21 @@ function createSlider(rootId, { min, max, value, decimals = 2, onInput, onChange
   let rect = null;
   let val = value;
 
+  root.tabIndex = 0;
+  root.setAttribute("role", "slider");
+  const labelKey = rootId.includes("engage") ? "aria.engage" : "aria.release";
+  root.dataset.i18nAriaLabel = labelKey;
+  root.setAttribute("aria-label", t(labelKey));
+  root.setAttribute("aria-valuemin", min);
+  root.setAttribute("aria-valuemax", max);
+  root.addEventListener("keydown", (e) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const next = e.key === "Home" ? min : e.key === "End" ? max : val + (["ArrowRight", "ArrowUp"].includes(e.key) ? .05 : -.05);
+    val = onInput(clamp(next, min, max)); render(); onChange(val);
+  });
   const render = () => {
+    root.setAttribute("aria-valuenow", val.toFixed(decimals));
     const p = clamp((val - min) / (max - min), 0, 1);
     fill.style.width = `${p * 100}%`;
     thumbEl.style.left = `${p * 100}%`;
@@ -987,25 +1050,27 @@ function buildSliders() {
 function buildThemeGrid() {
   const grid = $("#theme-grid");
   grid.textContent = "";
-  for (const [id, t] of Object.entries(THEMES)) {
+  for (const [id, theme] of Object.entries(THEMES)) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "theme-swatch" + (id === settings.theme ? " selected" : "");
     btn.dataset.theme = id;
+    btn.setAttribute("aria-pressed", String(id === settings.theme));
 
     const pair = document.createElement("span");
     pair.className = "swatch-pair";
     const half1 = document.createElement("span");
     half1.className = "swatch-half sl";
-    half1.style.background = `linear-gradient(135deg, ${t.L[0]}, ${t.L[1]} 55%, ${t.L[2]})`;
+    half1.style.background = `linear-gradient(135deg, ${theme.L[0]}, ${theme.L[1]} 55%, ${theme.L[2]})`;
     const half2 = document.createElement("span");
     half2.className = "swatch-half sr";
-    half2.style.background = `linear-gradient(225deg, ${t.R[0]}, ${t.R[1]} 55%, ${t.R[2]})`;
+    half2.style.background = `linear-gradient(225deg, ${theme.R[0]}, ${theme.R[1]} 55%, ${theme.R[2]})`;
     pair.append(half1, half2);
 
     const label = document.createElement("span");
     label.className = "swatch-label";
-    label.textContent = t.label;
+    label.dataset.i18n = `theme.${id}`;
+    label.textContent = t(`theme.${id}`);
 
     btn.append(pair, label);
     btn.addEventListener("click", () => {
@@ -1014,7 +1079,7 @@ function buildThemeGrid() {
       saveSettings();
       sendConfig();
       haptic("light");
-      $$(".theme-swatch", grid).forEach((b) => b.classList.toggle("selected", b === btn));
+      $$(".theme-swatch", grid).forEach((b) => (b.classList.toggle("selected", b === btn), b.setAttribute("aria-pressed", String(b === btn))));
     });
     grid.appendChild(btn);
   }
@@ -1024,19 +1089,23 @@ function bindNames() {
   for (const n of [1, 2]) {
     const input = $(`#name-${n}`);
     input.value = settings.names[n];
+    input.placeholder = t("player", { n });
     input.addEventListener("input", () => {
       settings.names[n] = input.value.slice(0, 14);
       if (state.player === n) {
-        elPillName.textContent = settings.names[n] || `Chocorramito ${n}`;
+        elPillName.textContent = settings.names[n] || t("player", { n });
       }
       updateCardNames();
+      saveSettings();
+      sendConfig();
     });
     input.addEventListener("change", () => {
       if (!settings.names[n].trim()) {
-        settings.names[n] = `Chocorramito ${n}`;
+        settings.names[n] = "";
         input.value = settings.names[n];
+        input.placeholder = t("player", { n });
       }
-      if (state.player === n) elPillName.textContent = settings.names[n];
+      if (state.player === n) elPillName.textContent = settings.names[n] || t("player", { n });
       updateCardNames();
       saveSettings();
       sendConfig();
@@ -1097,13 +1166,22 @@ function stopMotionDebug() {
   motionDebugTimer = null;
 }
 
+let settingsReturnFocus = null;
 function openSettings() {
+  settingsReturnFocus = document.activeElement;
+  resetLocalControls();
+  elPad.inert = true;
+  elPicker.inert = true;
   haptic("light");
   elSettings.hidden = false;
+  $("#settings-close").focus();
   startMotionDebug();
 }
 function closeSettings() {
   elSettings.hidden = true;
+  elPad.inert = false;
+  elPicker.inert = false;
+  settingsReturnFocus?.focus();
   stopMotionDebug();
   requestAnimationFrame(cacheTriggerRects);
 }
@@ -1113,19 +1191,33 @@ $("#picker-settings").addEventListener("click", openSettings);
 $("#settings-close").addEventListener("click", () => { haptic("light"); closeSettings(); });
 $("#settings-backdrop").addEventListener("click", closeSettings);
 
+document.addEventListener("keydown", (e) => {
+  if (!settingsOpen()) return;
+  if (e.key === "Escape") closeSettings();
+  if (e.key !== "Tab") return;
+  const items = $$("button, input, select, [tabindex='0']", elSettings).filter(x => !x.disabled);
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+window.addEventListener("blur", resetLocalControls);
+document.addEventListener("visibilitychange", () => { if (document.hidden) resetLocalControls(); });
+window.addEventListener("pagehide", () => { resetLocalControls(); wsClose(); });
+window.addEventListener("pageshow", (e) => { if (e.persisted) showPicker(); });
+
 // ─── Prevención de gestos iOS ───────────────────────────────────────────────
-document.addEventListener("gesturestart", (e) => e.preventDefault());
+document.addEventListener("gesturestart", (e) => { if (padVisible() && !settingsOpen()) e.preventDefault(); });
 document.addEventListener("touchmove", (e) => {
   // permitir scroll y escritura dentro del panel de ajustes
-  if (e.target && e.target.closest && e.target.closest(".sheet")) return;
+  if (!padVisible() || settingsOpen()) return;
   e.preventDefault();
 }, { passive: false });
-document.addEventListener("contextmenu", (e) => e.preventDefault());
+document.addEventListener("contextmenu", (e) => { if (padVisible() && !settingsOpen()) e.preventDefault(); });
 // doble-tap zoom defensivo (algunos iOS lo disparan igual)
 let lastTouchEnd = 0;
 document.addEventListener("touchend", (e) => {
   const now = Date.now();
-  if (now - lastTouchEnd < 320 && !(e.target && e.target.closest && e.target.closest(".sheet"))) {
+  if (padVisible() && now - lastTouchEnd < 320 && !(e.target && e.target.closest && e.target.closest(".sheet"))) {
     e.preventDefault();
   }
   lastTouchEnd = now;
@@ -1147,14 +1239,11 @@ function setupFullscreenCoach() {
     hint.hidden = true; // ya está a pantalla completa: la guía sobra
     return;
   }
-  hint.classList.add("coach");
-  hint.innerHTML =
-    "📱 La barra de Safari solo desaparece instalando el mando: " +
-    "toca <b>Compartir</b> (▢↑) → <b>«Agregar a pantalla de inicio»</b> " +
-    "y ábrelo desde el icono.";
+  hint.textContent = t("fullscreenHint");
 }
 
 function init() {
+  initLanguage();
   applyTheme(settings.theme);
   initHaptics(settings.haptics);
   setupFullscreenCoach();
@@ -1178,12 +1267,20 @@ function init() {
   updateCardNames();
   markLastCard();
 
-  // arranque: directo al último slot usado, o al picker
-  if (settings.player === 1 || settings.player === 2) {
-    showPad(settings.player);
-  } else {
-    showPicker();
-  }
+  // Remember the preferred card, but require an explicit choice to avoid stealing a live slot.
+  showPicker();
 }
+
+onLanguageChange(() => {
+  updateCardNames();
+  if (state.player) elPillName.textContent = settings.names[state.player] || t("player", { n: state.player });
+  for (const n of [1, 2]) $(`#name-${n}`).placeholder = t("player", { n });
+  updateCards(lastCardStatus);
+  if (bannerFlashKey) elBanner.textContent = t(bannerFlashKey);
+  else updateBanner();
+  if (pickerToastKey) elPickerToast.textContent = t(pickerToastKey);
+  setupFullscreenCoach();
+  requestAnimationFrame(cacheTriggerRects);
+});
 
 init();

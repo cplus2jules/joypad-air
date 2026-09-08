@@ -15,6 +15,7 @@
 // permiso efectivo del server.
 
 import { execFile } from "node:child_process";
+import { t } from "./i18n.js";
 
 let cached = "unknown"; // true | false | "unknown"
 
@@ -25,26 +26,11 @@ async function viaNodeMacPermissions() {
   return status === "authorized";
 }
 
-function viaOsascript() {
-  return new Promise((resolve) => {
-    execFile(
-      "osascript",
-      ["-e", 'tell application "System Events" to key code 90'],
-      { timeout: 3000 },
-      (err) => resolve(!err)
-    );
-  });
-}
-
 export async function checkAccessibility() {
   try {
     cached = await viaNodeMacPermissions();
   } catch {
-    try {
-      cached = await viaOsascript();
-    } catch {
-      cached = "unknown";
-    }
+    cached = "unknown";
   }
   return cached;
 }
@@ -69,18 +55,5 @@ export async function requestAccessibility() {
 }
 
 export function printAccessibilityHelp() {
-  console.log("");
-  console.log("┌─────────────────────────────────────────────────────────────┐");
-  console.log("│  ⚠️  FALTA EL PERMISO DE ACCESIBILIDAD                       │");
-  console.log("│                                                             │");
-  console.log("│  Sin él, las teclas NO llegan a Ryujinx (fallan en          │");
-  console.log("│  silencio). Para arreglarlo:                                │");
-  console.log("│                                                             │");
-  console.log("│  Ajustes del Sistema → Privacidad y seguridad →             │");
-  console.log("│  Accesibilidad → activa la casilla de Terminal              │");
-  console.log("│  (o de Play, si arrancaste con Play.app)                    │");
-  console.log("│                                                             │");
-  console.log("│  Luego vuelve a lanzar el servidor.                         │");
-  console.log("└─────────────────────────────────────────────────────────────┘");
-  console.log("");
+  console.log(t("access.help"));
 }

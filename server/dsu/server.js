@@ -22,6 +22,7 @@ import {
   encodeDataResponse,
 } from "./packets.js";
 import { toDsuFrame } from "./transform.js";
+import { t } from "../i18n.js";
 
 const SUBSCRIBER_TTL_MS = 2000; // Ryujinx re-pide cada frame; 2s sin pedir = fuera
 const SUBSCRIBER_PURGE_MS = 10000;
@@ -37,8 +38,9 @@ const NUM_SLOTS = 4;
 // nominal.
 const NOMINAL_DELTA_US = 16666;
 const MAX_DELTA_US = 500000; // 0.5s
+const MOTION_STALE_MS = 250;
 
-export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
+export function createDsuServer({ port = 26760, host = "127.0.0.1", onError = () => {} } = {}) {
   // id de servidor estable durante el proceso (los clientes lo ignoran)
   const serverId = (Math.floor(Math.random() * 0xffffffff)) >>> 0;
 
@@ -49,7 +51,7 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
 
   function slotState(n) {
     if (!slots.has(n)) {
-      slots.set(n, { packetId: 0, hzCount: 0, hz: 0, lastSample: null, lastRawTs: null, pubTs: 0 });
+      slots.set(n, { packetId: 0, hzCount: 0, hz: 0, lastSample: null, lastRawTs: null, pubTs: 0, lastArrival: 0 });
     }
     return slots.get(n);
   }
@@ -57,7 +59,7 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
   // Línea de tiempo publicada (monotónica) a partir del ts crudo del sensor.
   function rebaseTs(s, rawTs) {
     if (s.lastRawTs === null) {
-      s.pubTs = rawTs;
+      s.pubTs = Math.max(rawTs, s.pubTs + NOMINAL_DELTA_US);
     } else {
       const delta = rawTs - s.lastRawTs;
       s.pubTs += delta > 0 && delta <= MAX_DELTA_US ? delta : NOMINAL_DELTA_US;
@@ -113,7 +115,7 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
         }
         sub = { addr: rinfo.address, port: rinfo.port, slots: new Set(), all: false, lastSeen: 0 };
         subscribers.set(key, sub);
-        console.log(`[dsu] suscriptor nuevo: ${key} (slot ${req.subscriberType === 0 ? "ALL" : req.slot})`);
+        console.log(t("dsu.subscriber", { address: key, slot: req.subscriberType === 0 ? t("dsu.all") : req.slot }));
       }
       sub.lastSeen = Date.now();
       if (req.subscriberType === 0) sub.all = true;
@@ -123,12 +125,14 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
   });
 
   socket.on("error", (err) => {
-    console.error(`[dsu] error de socket: ${err.message}`);
+    console.error(t("dsu.error", { message: err.message }));
+    if (err.code === "EADDRINUSE") console.error(t("dsu.portBusy", { host, port }));
+    onError(err);
   });
 
   socket.bind(port, host, () => {
     listening = true;
-    console.log(`[dsu] servidor motion DSU/CemuHook en ${host}:${port}`);
+    console.log(t("dsu.ready", { host, port }));
   });
 
   // hz por slot (ventana de 2s) + purga de suscriptores muertos (antes la
@@ -146,14 +150,35 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
   }, 2000);
   hzTick.unref?.();
 
+  function quiesceSlot(slot) {
+    const s = slots.get(slot);
+    if (!s?.lastSample) return;
+    s.pubTs += NOMINAL_DELTA_US;
+    const still = { ...s.lastSample, pitch: 0, yaw: 0, roll: 0, tsUs: s.pubTs };
+    s.packetId = (s.packetId + 1) >>> 0;
+    sendToSubscribers(slot, encodeDataResponse(serverId, slot, s.packetId, still));
+    s.lastSample = null;
+    s.lastRawTs = null;
+    s.hz = 0;
+  }
+  // This deadline is independent of WebSocket keepalive: a live socket can
+  // stop producing sensors when the phone locks or the app is interrupted.
+  const staleTick = setInterval(() => {
+    for (const [slot, s] of slots) {
+      if (s.lastSample && performance.now() - s.lastArrival > MOTION_STALE_MS) quiesceSlot(slot);
+    }
+  }, 50);
+  staleTick.unref?.();
+
   return {
     // sample crudo del iPhone (marco device); orientation del player
-    updateSlot(slot, sample, orientation) {
+    updateSlot(slot, sample, orientation, motionProfile) {
       if (slot < 0 || slot >= NUM_SLOTS) return;
       const s = slotState(slot);
-      const dsuSample = toDsuFrame(sample, orientation);
+      const dsuSample = toDsuFrame(sample, orientation, motionProfile);
       dsuSample.tsUs = rebaseTs(s, dsuSample.tsUs);
       s.lastSample = dsuSample;
+      s.lastArrival = performance.now();
       s.hzCount++;
       s.packetId = (s.packetId + 1) >>> 0;
 
@@ -163,15 +188,7 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
     // GIRO apagado o player desconectado: publicar un último sample con el
     // gyro a CERO (el emulador integra el último valor recibido — sin esto
     // un gyro congelado ≠ 0 deja la cámara girando sola) y soltar el slot.
-    quiesceSlot(slot) {
-      const s = slots.get(slot);
-      if (!s || !s.lastSample) return;
-      const still = { ...s.lastSample, pitch: 0, yaw: 0, roll: 0, tsUs: s.pubTs + NOMINAL_DELTA_US };
-      s.packetId = (s.packetId + 1) >>> 0;
-      sendToSubscribers(slot, encodeDataResponse(serverId, slot, s.packetId, still));
-      s.lastSample = null;
-      s.lastRawTs = null;
-    },
+    quiesceSlot,
 
     // alias para compatibilidad (mismo efecto sin el sample de reposo)
     clearSlot(slot) {
@@ -185,7 +202,7 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
     status() {
       const out = {};
       for (const [n, s] of slots) {
-        out[n] = s.lastSample ? { hz: s.hz, packetId: s.packetId } : null;
+        out[n] = s.lastSample ? { hz: s.hz, packetId: s.packetId, ageMs: Math.round(performance.now() - s.lastArrival), sample: s.lastSample } : null;
       }
       return {
         listening,
@@ -198,6 +215,7 @@ export function createDsuServer({ port = 26760, host = "127.0.0.1" } = {}) {
 
     close() {
       clearInterval(hzTick);
+      clearInterval(staleTick);
       try { socket.close(); } catch { /* ya cerrado */ }
     },
   };

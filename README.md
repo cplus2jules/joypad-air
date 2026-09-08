@@ -7,6 +7,12 @@ source, no ads, no tracking.
 
 A.K.A. **"El Control Super Pro Max"** · Guía en español: [README.es.md](README.es.md)
 
+## Local Swift app for Just Dance
+
+The native iPhone controller, local pairing bridge and separate patched Ryujinx build are available for testing. Start with the [implementation status](docs/motion-implementation-status.md), [iPhone installation guide](docs/local-device-setup.md), and [sensor contract](docs/motion-coordinate-contract.md). Launch paired mode with `npm run start:paired` in Terminal, then open the Mac pairing URL it prints. The real-phone Just Dance scoring test is still required; the full Swift app plan is not complete.
+
+Use `npm run start:dance` for the isolated Just Dance preset and `npm run ryujinx:launch` for the selected local emulator build. Keep the original browser setup as the fallback. Development builds and private local emulator data stay under the ignored `.local/` directory.
+
 ## Why this exists
 
 Every "phone as gamepad" project is Android→Windows. On macOS there was no
@@ -19,7 +25,7 @@ joypad-air does both, macOS-first:
   analog→8-way conversion with radial + angular hysteresis, SOCD cleaning,
   rolling d-pad, hair triggers.
 - **Motion** → served as a DSU/cemuhook server on UDP 26760. Dolphin, Cemu
-  and Citra consume it natively; for Ryujinx there's a 40-line MIT patch you
+  and Citra consume it natively; for Ryujinx there's a local source patch you
   build locally (below).
 
 ## Install (macOS)
@@ -76,6 +82,24 @@ controller-with-waves icon pre-race). Aiming in Zelda-likes just works.
 Weird axes? Controller Settings → calibration row with GIRO on (flat
 face-up ⇒ `az ≈ -1.00`); the axis matrix lives in `server/dsu/transform.js`.
 
+## Languages
+
+The web controller, setup dashboard, and native app support **English** and
+**Español**. Choose a language on the connection screen or in Settings. Your choice
+is saved on that device and updates the interface without disconnecting the controller.
+The first visit follows the device language, with English as the fallback.
+
+Terminal output defaults to English, including `npm start` and the Ryujinx setup
+commands. To run the server in Spanish:
+
+```bash
+JOYPAD_LANG=es npm start
+```
+
+Use `JOYPAD_LANG=es npm run ryujinx:setup` for Spanish setup instructions, or
+`JOYPAD_LANG=en` to explicitly select English. Restart the server after changing
+this setting. Terminal language is separate from the language selected on your phone.
+
 ## Features
 
 - Player names, 8 Joy-Con-style color themes, stick sensitivity sliders,
@@ -118,3 +142,13 @@ npm run ryujinx:check # is Ryujinx config in sync with mappings.js?
 is the Expo native app (gyro; run via expo start). `server/` is the Node
 engine. `tools/` holds the Ryujinx setup tool, the motion patch and tests.
 MIT licensed. Releasing: see [RELEASING.md](RELEASING.md).
+
+## Connection setup dashboard
+
+Open `http://localhost:3001/setup` on the Mac to scan the phone QR, inspect both players, and check the keyboard bridge, Accessibility permission, input profiles, and Ryujinx focus. Quit Ryujinx before using **Set up Ryujinx**. The full controller uses Pro Controller profiles; the optional sideways layout uses a left/right Joy-Con. Setup saves a timestamped Config.json backup and preserves other players and unrelated settings.
+
+The web controller requires an explicit player choice on each launch, remembers the last choice, releases held inputs when hidden or when settings opens, and shows reconnect and recovery states. Native input pauses when the emulator loses focus. To use the existing keyboard bridge with another supported emulator, set `TARGET_APP=dolphin` (or `cemu`) when starting the server.
+
+Startup does not open system permission dialogs automatically. Allow Accessibility for the app running the server in System Settings; the dashboard rechecks it. `ACCESSIBILITY_PROMPT=1 npm start` opts into the original guided permission prompt.
+
+Regression checks: `npm test`, `npm run test:ryujinx`, and `npm run test:i18n`. Smoke-test DSU uses UDP 26797, separate from the normal server on 26760.

@@ -1,0 +1,5 @@
+{
+  "ios": {
+    "NSMotionUsageDescription": "Usa el movimiento del teléfono para apuntar y girar en los juegos."
+  }
+}

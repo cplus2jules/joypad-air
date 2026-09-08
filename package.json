@@ -1,7 +1,7 @@
 {
   "name": "joypad-air",
   "version": "2.0.0",
-  "description": "Turn your iPhone into a gamepad for Ryujinx, Dolphin & Cemu on macOS — DSU (cemuhook) motion + low-latency buttons over Wi-Fi. A.K.A. \"El Control Super Pro Max\"",
+  "description": "Turn your iPhone into a gamepad for Ryujinx, Dolphin & Cemu on macOS \u2014 DSU (cemuhook) motion + low-latency buttons over Wi-Fi. A.K.A. \"El Control Super Pro Max\"",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -22,12 +22,22 @@
   },
   "scripts": {
     "start": "node server/index.js",
+    "start:dance": "node tools/start-dance.mjs",
+    "start:paired": "node tools/start-pairing.mjs",
     "dev": "node --watch server/index.js",
     "test": "node tools/smoke-test.mjs",
     "ryujinx:setup": "node tools/ryujinx-setup.mjs",
     "ryujinx:pro": "node tools/ryujinx-setup.mjs",
     "ryujinx:sideways": "node tools/ryujinx-setup.mjs --sideways",
-    "ryujinx:check": "node tools/ryujinx-setup.mjs --check"
+    "ryujinx:dance": "node tools/ryujinx-setup.mjs --just-dance --patched",
+    "ryujinx:build": "bash tools/ryujinx-build/build-local.sh",
+    "ryujinx:prepare": "node tools/ryujinx-build/prepare-local.mjs",
+    "ryujinx:launch": "bash tools/ryujinx-build/launch-local.sh",
+    "test:motion": "node --test tools/motion-test.mjs",
+    "test:pairing": "node --test tools/pairing-test.mjs",
+    "ryujinx:check": "node tools/ryujinx-setup.mjs --check",
+    "test:i18n": "node --test tools/i18n-test.mjs",
+    "test:ryujinx": "node --test tools/ryujinx-test.mjs"
   },
   "keywords": [
     "gamepad",

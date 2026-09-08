@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { normalizeLanguage } from '../../../public/i18n/messages';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Settings store (AsyncStorage) ───────────────────────
@@ -8,6 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = '@cspm/settings/v2';
 const SAVE_DEBOUNCE_MS = 300;
+let deviceLanguage = 'en';
+try { deviceLanguage = normalizeLanguage(Intl.DateTimeFormat().resolvedOptions().locale); } catch {}
 
 const DEFAULT_PROFILE = {
   themeId: 'neon',
@@ -25,6 +28,7 @@ const DEFAULT_PROFILE = {
 
 export const DEFAULT_SETTINGS = {
   schema: 2,
+  language: deviceLanguage,
   lastSlot: 1,
   lastLayout: 'full',
   onboarded: false,
@@ -32,8 +36,8 @@ export const DEFAULT_SETTINGS = {
   // Necesario fuera de Expo Go, donde Constants no trae hostUri.
   host: null,
   profiles: {
-    1: { name: 'Chocorramito 1', ...DEFAULT_PROFILE },
-    2: { name: 'Chocorramito 2', ...DEFAULT_PROFILE },
+    1: { name: '', ...DEFAULT_PROFILE },
+    2: { name: '', ...DEFAULT_PROFILE },
   },
 };
 
@@ -43,9 +47,10 @@ function mergeWithDefaults(stored) {
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
+    language: normalizeLanguage(stored.language || deviceLanguage),
     profiles: {
-      1: { name: 'Chocorramito 1', ...DEFAULT_PROFILE, ...(stored.profiles?.[1] || {}) },
-      2: { name: 'Chocorramito 2', ...DEFAULT_PROFILE, ...(stored.profiles?.[2] || {}) },
+      1: { name: '', ...DEFAULT_PROFILE, ...(stored.profiles?.[1] || {}) },
+      2: { name: '', ...DEFAULT_PROFILE, ...(stored.profiles?.[2] || {}) },
     },
   };
 }

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useBatteryLevel } from 'expo-battery';
@@ -17,6 +19,7 @@ import { haptic, setIntensity } from '../haptics';
 import { publishMotionSample } from '../motion';
 import { setClickEnabled } from '../sound';
 import { detectHost, SERVER_PORT, useConnection } from '../net/connection';
+import { useI18n, connectionLabel } from '../i18n';
 import { useSettings } from '../store/settings';
 import ConnectOverlay from '../components/ConnectOverlay';
 import StatusBanner from '../components/StatusBanner';
@@ -36,6 +39,7 @@ const G_MS2 = 9.80665; // 1 g en m/s² — DeviceMotion entrega m/s²
 // 6px: verde <25ms / ámbar <60 / rojo ≥60 / gris sin dato.
 // Al tocarlo muestra "NN ms" durante 2s.
 function LatencyDot({ rtt }) {
+  const { t } = useI18n();
   const [showMs, setShowMs] = useState(false);
   const timerRef = useRef(null);
   useEffect(() => () => clearTimeout(timerRef.current), []);
@@ -55,6 +59,8 @@ function LatencyDot({ rtt }) {
         timerRef.current = setTimeout(() => setShowMs(false), 2000);
       }}
       hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={t('latency')}
       style={s.latencyWrap}
     >
       <View style={[s.latencyDot, { backgroundColor: color }]} />
@@ -71,6 +77,7 @@ function LatencyDot({ rtt }) {
 // 'reemplazado' (takeover por otro mando): texto propio, SIN spinner y
 // sin reintentos — el back del topbar sigue activo para volver al Picker.
 function ReconnectOverlay({ status, host }) {
+  const { t } = useI18n();
   const replaced = status === 'reemplazado';
   const visible =
     status === 'reconectando' || status === 'error' || status === 'sin host' || replaced;
@@ -97,8 +104,8 @@ function ReconnectOverlay({ status, host }) {
         {!replaced && <ActivityIndicator color="#fff" />}
         <Text style={[s.reconnText, replaced && s.reconnTextReplaced]}>
           {replaced
-            ? 'Otro mando tomó este slot — vuelve atrás para elegir jugador'
-            : 'Reconectando con el Mac…'}
+            ? t('takeover')
+            : t(status === 'sin host' ? 'noHostHint' : 'reconnecting')}
         </Text>
         {!replaced && host ? (
           <Text style={s.reconnHost}>{host}:{SERVER_PORT}</Text>
@@ -110,7 +117,11 @@ function ReconnectOverlay({ status, host }) {
 
 // ── Pad ─────────────────────────────────────────────────
 export default function Pad({ player, layout, compact, onToggleCompact, onBack, onOpenSettings }) {
+  const { t } = useI18n();
   const { settings, update } = useSettings();
+  const viewport = useWindowDimensions();
+  const shellHeight = Math.min(540, viewport.height - 76);
+  const shellWidth = Math.max(compact ? 270 : 188, shellHeight * 0.46);
   const profile = settings.profiles[player] ?? settings.profiles[1];
   const theme = useMemo(() => resolveTheme(profile.themeId), [profile.themeId]);
   // GIRO: estado de SESIÓN (no persiste) — apagado por default
@@ -197,7 +208,8 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
     try {
       const res = await DeviceMotion.requestPermissionsAsync();
       if (res?.granted) setMotionOn(true);
-    } catch {}
+      else Alert.alert(t('gyroHeading'), t('gyroDenied'));
+    } catch { Alert.alert(t('gyroHeading'), t('gyroError')); }
   };
 
   // Aviso accionable del server (prioridad: accesibilidad > native > foco).
@@ -208,16 +220,17 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
   const bannerMsg = useMemo(() => {
     if (status !== 'conectado' || !serverInfo.hello) return null;
     if (serverInfo.accessibility === false) {
-      return 'Falta el permiso de Accesibilidad en el Mac — mira la Terminal';
+      return t('accessBanner');
     }
     if (serverInfo.native === false) {
-      return 'El teclado nativo no cargó en el Mac — mira la Terminal (modo log)';
+      return t('nativeBanner');
     }
+    if (serverInfo.ryujinx?.synced === false) return t('pad.profileHelp');
     if (serverInfo.focus?.ok === false) {
-      return 'Ryujinx no tiene el foco — toca su ventana en el Mac';
+      return t('focusBanner');
     }
     return null;
-  }, [status, serverInfo]);
+  }, [status, serverInfo, t]);
 
   // Nivel de háptica del perfil → módulo global (al montar y al cambiar)
   useEffect(() => {
@@ -231,22 +244,22 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
 
   // Acento del lado correspondiente al slot: P1 = L, P2 = R
   const accent = player === 1 ? theme.accentL : theme.accentR;
-  const pillInk = theme.light ? JOYCON_DARK_INK : '#fff';
+  const pillInk = accent;
 
   return (
     <View style={s.pad}>
       <View style={s.topBar}>
-        <Pressable onPress={() => { haptic.light(); onBack(); }} style={s.backBtn}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('back')} onPress={() => { haptic.light(); onBack(); }} style={s.backBtn}>
           <Text style={s.backText}>‹</Text>
         </Pressable>
         <View style={s.pillCol}>
           <Pressable
             onLongPress={() => { haptic.medium(); onOpenSettings?.(); }}
             delayLongPress={400}
-            style={[s.playerPill, { backgroundColor: accent }]}
+            style={[s.playerPill, { backgroundColor: 'transparent' }]}
           >
             <Text style={[s.playerPillText, { color: pillInk }]}>
-              {profile.name.toUpperCase()}
+              {(profile.name || t('player', { n: player })).toUpperCase()}
             </Text>
           </Pressable>
           <PlayerLeds player={player} accent={accent} status={status} />
@@ -258,7 +271,7 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
             (status === 'error' || status === 'sin host') && { color: C.err },
           ]}
         >
-          {status}
+          {t(connectionLabel[status] || 'connecting')}
         </Text>
         <LatencyDot rtt={rtt} />
         {batteryLow && (
@@ -266,6 +279,9 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
         )}
         <View style={s.topRightRow}>
           <Pressable
+            accessibilityRole="switch"
+            accessibilityLabel={t('gyro')}
+            accessibilityState={{ checked: motionOn }}
             onPress={toggleMotion}
             style={[
               s.compactToggle,
@@ -273,7 +289,7 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
             ]}
           >
             <Text style={[s.compactToggleText, motionOn && { color: accent }]}>
-              ∿ GIRO
+              ∿ {t('gyro')}
             </Text>
           </Pressable>
           <Pressable
@@ -281,17 +297,18 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
             style={s.compactToggle}
           >
             <Text style={[s.compactToggleText, compact && { color: '#5ad07a' }]}>
-              {compact ? '◧ MAX' : '⊞ MIN'}
+              {t(compact ? 'expand' : 'compact')}
             </Text>
           </Pressable>
         </View>
       </View>
 
-      <View style={s.body}>
+      <View style={[s.body, layout === 'full' && { height: shellHeight, flex: 0, marginVertical: 18 }]}>
         {layout === 'full' && (
           <>
-            <LeftJoycon send={send} compact={compact} theme={theme} profile={profile} />
-            <RightJoycon send={send} compact={compact} theme={theme} profile={profile} />
+            <LeftJoycon width={shellWidth} send={send} compact={compact} theme={theme} profile={profile} />
+            <View pointerEvents="none" style={s.hardwareGap}><Text style={s.hardwareBrand}>JOYPAD AIR</Text><View style={s.hardwareLed} /></View>
+            <RightJoycon width={shellWidth} send={send} compact={compact} theme={theme} profile={profile} />
           </>
         )}
         {layout === 'left' && <SidewaysLeft send={send} theme={theme} profile={profile} />}
@@ -305,7 +322,7 @@ export default function Pad({ player, layout, compact, onToggleCompact, onBack, 
       <ReconnectOverlay status={status} host={host} />
 
       {/* Animación de acople al conectar (encima de todo, no toca input) */}
-      <ConnectOverlay status={status} theme={theme} name={profile.name} />
+      <ConnectOverlay status={status} theme={theme} name={profile.name || t('player', { n: player })} />
     </View>
   );
 }
@@ -416,11 +433,11 @@ function SidewaysRight({ send, theme, profile }) {
 }
 
 // ── Left Joy-Con ────────────────────────────────────────
-function LeftJoycon({ send, compact, theme, profile }) {
+function LeftJoycon({ width, send, compact, theme, profile }) {
   // Un solo transform de escala en el contenedor del cluster
   const btnScale = { transform: [{ scale: profile.buttonScale }] };
   return (
-    <View style={[s.joycon, s.joyconLeft]}>
+    <View style={[s.joycon, s.joyconLeft, { width }]}>
       <LinearGradient
         colors={theme.L}
         start={{ x: 0, y: 0 }}
@@ -466,10 +483,10 @@ function LeftJoycon({ send, compact, theme, profile }) {
 }
 
 // ── Right Joy-Con ───────────────────────────────────────
-function RightJoycon({ send, compact, theme, profile }) {
+function RightJoycon({ width, send, compact, theme, profile }) {
   const btnScale = { transform: [{ scale: profile.buttonScale }] };
   return (
-    <View style={[s.joycon, s.joyconRight]}>
+    <View style={[s.joycon, s.joyconRight, { width }]}>
       <LinearGradient
         colors={theme.R}
         start={{ x: 1, y: 0 }}
@@ -517,7 +534,7 @@ function RightJoycon({ send, compact, theme, profile }) {
 // ── Styles ──────────────────────────────────────────────
 const s = StyleSheet.create({
   // Pad
-  pad: { flex: 1, backgroundColor: C.bg },
+  pad: { flex: 1, backgroundColor: '#101214' },
   topBar: {
     height: TOPBAR_H, // 34 → 40: hueco para los LEDs bajo el pill
     flexDirection: 'row',
@@ -530,7 +547,7 @@ const s = StyleSheet.create({
   backText: { color: C.inkDim, fontSize: 22, fontWeight: '700' },
   pillCol: { alignItems: 'center' },
   playerPill: { paddingHorizontal: 12, paddingVertical: 3, borderRadius: 10 },
-  playerPillText: { color: '#fff', fontWeight: '800', fontSize: 12, letterSpacing: 0.5 },
+  playerPillText: { color: '#fff', fontWeight: '500', fontSize: 12, letterSpacing: 0.5 },
   statusText: { color: C.inkDim, fontSize: 10 },
   latencyWrap: {
     flexDirection: 'row',
@@ -610,17 +627,20 @@ const s = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
-  body: { flex: 1, flexDirection: 'row', alignItems: 'stretch' },
+  body: { flex: 1, flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', paddingHorizontal: 24 },
+  hardwareGap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18 },
+  hardwareBrand: { color: '#a4a7ad', fontSize: 10, letterSpacing: 2 },
+  hardwareLed: { width: 22, height: 3, backgroundColor: '#5d6268', borderRadius: 2 },
   spacer: { flex: 1 },
 
   // Joy-Con panels
   joycon: {
-    flex: 1,
+    flex: 0,
     overflow: 'hidden',
     ...SHADOW,
   },
-  joyconLeft: {},
-  joyconRight: {},
+  joyconLeft: { borderTopLeftRadius: 68, borderBottomLeftRadius: 68, borderTopRightRadius: 9, borderBottomRightRadius: 9, borderRightWidth: 9, borderRightColor: '#25282c' },
+  joyconRight: { borderTopRightRadius: 68, borderBottomRightRadius: 68, borderTopLeftRadius: 9, borderBottomLeftRadius: 9, borderLeftWidth: 9, borderLeftColor: '#25282c' },
   joyconInner: {
     flex: 1,
     paddingHorizontal: 22,
@@ -635,7 +655,7 @@ const s = StyleSheet.create({
     gap: 8,
     paddingTop: 6,
     paddingHorizontal: 22,
-    paddingRight: 50,
+    paddingRight: 12,
     justifyContent: 'flex-start',
   },
   shoulderBarRight: {
@@ -643,11 +663,11 @@ const s = StyleSheet.create({
     gap: 8,
     paddingTop: 6,
     paddingHorizontal: 22,
-    paddingLeft: 50,
+    paddingLeft: 12,
     justifyContent: 'flex-end',
   },
-  shoulder: { width: 80, height: 30, borderRadius: 15 },
-  shoulderText: { fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  shoulder: { width: 58, height: 32, borderRadius: 11 },
+  shoulderText: { fontSize: 11, fontWeight: '500', letterSpacing: 1 },
 
   // Corner positions for + / − / capture / home
   cornerTopRight: { position: 'absolute', top: 4, right: 18, zIndex: 5 },
@@ -657,11 +677,11 @@ const s = StyleSheet.create({
 
   // Stick wrap positions inside joycon
   stickWrap: {
-    position: 'absolute', top: 20, left: 0, right: 0,
+    position: 'absolute', top: '5%', left: 0, right: 0,
     alignItems: 'center',
   },
   stickWrapRight: {
-    position: 'absolute', bottom: 30, left: 0, right: 0,
+    position: 'absolute', top: '50%', left: 0, right: 0,
     alignItems: 'center',
   },
   // wrappers centrados verticalmente (modo compact — stick/face ocupa todo el espacio)
@@ -674,11 +694,11 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   dpadWrap: {
-    position: 'absolute', bottom: 16, left: 0, right: 0,
+    position: 'absolute', top: '50%', left: 0, right: 0,
     alignItems: 'center',
   },
   faceWrap: {
-    position: 'absolute', top: 16, left: 0, right: 0,
+    position: 'absolute', top: '5%', left: 0, right: 0,
     alignItems: 'center',
   },
 

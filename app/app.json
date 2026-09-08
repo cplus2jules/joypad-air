@@ -27,9 +27,13 @@
       [
         "expo-sensors",
         {
-          "motionPermission": "El mando usa el giroscopio para los controles de movimiento (apuntar, girar) en el emulador."
+          "motionPermission": "Use phone motion to aim and steer in games."
         }
       ]
-    ]
+    ],
+    "locales": {
+      "en": "./locales/en.json",
+      "es": "./locales/es.json"
+    }
   }
 }

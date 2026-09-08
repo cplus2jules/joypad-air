@@ -1,3 +1,35 @@
+diff --git a/nuget.config b/nuget.config
+index c8d71a8..b2e277b 100644
+--- a/nuget.config
++++ b/nuget.config
+@@ -1,4 +1,4 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
+
+ <configuration>
+     <packageSources>
+@@ -6,7 +6,7 @@
+         <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+         <!-- Only needed when using pre-release versions of Ryujinx.LibHac. -->
+         <add key="LibHacAlpha" value="https://git.ryujinx.app/api/v4/projects/17/packages/nuget/index.json" />
+-        <add key="Ryujinx.UpdateClient" value="https://git.ryujinx.app/api/v4/projects/71/packages/nuget/index.json" />
++        <!-- Pinned update packages are available from nuget.org. -->
+     </packageSources>
+     <packageSourceMapping>
+         <!-- key value for <packageSource> should match key values from <packageSources> element -->
+@@ -14,10 +14,6 @@
+         <packageSource key="nuget.org">
+             <package pattern="*" />
+         </packageSource>
+-        <packageSource key="Ryujinx.UpdateClient">
+-            <package pattern="Ryujinx.UpdateClient" />
+-            <package pattern="Ryujinx.Systems.Update.Common" />
+-        </packageSource>
+         <packageSource key="LibHacAlpha">
+             <package pattern="Ryujinx.LibHac" />
+         </packageSource>
+diff --git a/src/Ryujinx.Common/Configuration/Hid/Keyboard/GenericKeyboardInputConfig.cs b/src/Ryujinx.Common/Configuration/Hid/Keyboard/GenericKeyboardInputConfig.cs
+index ecddd31..5c96f63 100644
 --- a/src/Ryujinx.Common/Configuration/Hid/Keyboard/GenericKeyboardInputConfig.cs
 +++ b/src/Ryujinx.Common/Configuration/Hid/Keyboard/GenericKeyboardInputConfig.cs
 @@ -1,3 +1,5 @@
@@ -6,7 +38,7 @@
  namespace Ryujinx.Common.Configuration.Hid.Keyboard
  {
      public class GenericKeyboardInputConfig<TKey> : GenericInputConfigurationCommon<TKey> where TKey : unmanaged
-@@ -11,5 +13,11 @@
+@@ -11,5 +13,11 @@ namespace Ryujinx.Common.Configuration.Hid.Keyboard
          /// Right JoyCon Controller Stick Bindings
          /// </summary>
          public JoyconConfigKeyboardStick<TKey> RightJoyconStick { get; set; }
@@ -18,9 +50,11 @@
 +        public MotionConfigController Motion { get; set; }
      }
  }
+diff --git a/src/Ryujinx.Input/HLE/NpadController.cs b/src/Ryujinx.Input/HLE/NpadController.cs
+index b397900..e0ef9d5 100644
 --- a/src/Ryujinx.Input/HLE/NpadController.cs
 +++ b/src/Ryujinx.Input/HLE/NpadController.cs
-@@ -2,6 +2,7 @@
+@@ -2,6 +2,7 @@ using Ryujinx.Common;
  using Ryujinx.Common.Configuration.Hid;
  using Ryujinx.Common.Configuration.Hid.Controller;
  using Ryujinx.Common.Configuration.Hid.Controller.Motion;
@@ -28,55 +62,72 @@
  using Ryujinx.Common.Logging;
  using Ryujinx.HLE.HOS.Services.Hid;
  using System;
-@@ -240,22 +241,38 @@
+@@ -240,23 +241,50 @@ namespace Ryujinx.Input.HLE
              return _gamepad != null;
          }
- 
+
+-        public void UpdateUserConfiguration(InputConfig config)
 +        // Motion config lives on controller configs and (patched) keyboard
 +        // configs — resolve both so CemuHook motion works with WindowKeyboard.
 +        private static MotionConfigController GetMotionConfig(InputConfig config)
-+        {
+         {
+-            if (config is StandardControllerInputConfig controllerConfig)
 +            return config switch
-+            {
+             {
+-                bool needsMotionInputUpdate = _config is not StandardControllerInputConfig oldControllerConfig ||
+-                    ((oldControllerConfig.Motion.EnableMotion != controllerConfig.Motion.EnableMotion) &&
+-                    (oldControllerConfig.Motion.MotionBackend != controllerConfig.Motion.MotionBackend));
 +                StandardControllerInputConfig controllerConfig => controllerConfig.Motion,
 +                StandardKeyboardInputConfig keyboardConfig => keyboardConfig.Motion,
 +                _ => null,
 +            };
 +        }
 +
-         public void UpdateUserConfiguration(InputConfig config)
-         {
--            if (config is StandardControllerInputConfig controllerConfig)
++        private readonly record struct MotionSettings(
++            Ryujinx.Common.Configuration.Hid.PlayerIndex Player, ConfigControllerType Type,
++            bool Present, bool Enabled, MotionInputBackendType Backend,
++            int Sensitivity, double Deadzone, string Host, int Port, int Slot, int AltSlot, bool Mirror);
+
+-                if (needsMotionInputUpdate)
++        private MotionSettings _motionSettings;
++
++        public void UpdateUserConfiguration(InputConfig config)
++        {
 +            MotionConfigController motionConfig = GetMotionConfig(config);
++            CemuHookMotionConfigController cemu = motionConfig as CemuHookMotionConfigController;
++            var next = new MotionSettings(config.PlayerIndex, config.ControllerType,
++                motionConfig != null, motionConfig?.EnableMotion ?? false,
++                motionConfig?.MotionBackend ?? default, motionConfig?.Sensitivity ?? 100,
++                motionConfig?.GyroDeadzone ?? 0, cemu?.DsuServerHost, cemu?.DsuServerPort ?? 0,
++                cemu?.Slot ?? 0, cemu?.AltSlot ?? 0, cemu?.MirrorInput ?? false);
 +
-+            if (motionConfig != null)
-             {
--                bool needsMotionInputUpdate = _config is not StandardControllerInputConfig oldControllerConfig ||
--                    ((oldControllerConfig.Motion.EnableMotion != controllerConfig.Motion.EnableMotion) &&
--                    (oldControllerConfig.Motion.MotionBackend != controllerConfig.Motion.MotionBackend));
-+                MotionConfigController oldMotionConfig = GetMotionConfig(_config);
- 
-+                bool needsMotionInputUpdate = oldMotionConfig == null ||
-+                    ((oldMotionConfig.EnableMotion != motionConfig.EnableMotion) &&
-+                    (oldMotionConfig.MotionBackend != motionConfig.MotionBackend));
-+
-                 if (needsMotionInputUpdate)
++            // NpadManager calls this every frame. Compare a value snapshot so
++            // unchanged input keeps its socket, and in-place setting edits are detected.
++            if (_motionSettings != next)
++            {
++                if (_config != null)
                  {
 -                    UpdateMotionInput(controllerConfig.Motion);
-+                    UpdateMotionInput(motionConfig);
++                    _cemuHookClient.ResetClient((int)_config.PlayerIndex);
                  }
-             }
-             else
-             {
+-            }
+-            else
+-            {
 -                // Non-controller doesn't have motions.
-+                // Config without a motion section doesn't have motions.
                  _leftMotionInput = null;
++                _rightMotionInput = null;
++                if (motionConfig != null && motionConfig.EnableMotion)
++                {
++                    UpdateMotionInput(motionConfig);
++                }
++                _motionSettings = next;
              }
- 
-@@ -287,9 +304,11 @@
+
+             _config = config;
+@@ -287,9 +315,11 @@ namespace Ryujinx.Input.HLE
              {
                  State = gamepad.GetMappedStateSnapshot();
- 
+
 -                if (_config is StandardControllerInputConfig controllerConfig && controllerConfig.Motion.EnableMotion)
 +                MotionConfigController motionConfig = GetMotionConfig(_config);
 +
@@ -87,28 +138,28 @@
                      {
                          if (gamepad.Features.HasFlag(GamepadFeaturesFlag.Motion))
                          {
-@@ -299,9 +318,9 @@
+@@ -299,9 +329,9 @@ namespace Ryujinx.Input.HLE
                              accelerometer = new Vector3(accelerometer.X, -accelerometer.Z, accelerometer.Y);
                              gyroscope = new Vector3(gyroscope.X, -gyroscope.Z, gyroscope.Y);
- 
+
 -                            _leftMotionInput.Update(accelerometer, gyroscope, (ulong)PerformanceCounter.ElapsedNanoseconds / 1000, controllerConfig.Motion.Sensitivity, (float)controllerConfig.Motion.GyroDeadzone);
 +                            _leftMotionInput.Update(accelerometer, gyroscope, (ulong)PerformanceCounter.ElapsedNanoseconds / 1000, motionConfig.Sensitivity, (float)motionConfig.GyroDeadzone);
- 
+
 -                            if (controllerConfig.ControllerType == ConfigControllerType.JoyconPair)
 +                            if (_config.ControllerType == ConfigControllerType.JoyconPair)
                              {
                                  if (gamepad.Id == "JoyConPair")
                                  {
-@@ -311,7 +330,7 @@
+@@ -311,7 +341,7 @@ namespace Ryujinx.Input.HLE
                                      rightAccelerometer = new Vector3(rightAccelerometer.X, -rightAccelerometer.Z, rightAccelerometer.Y);
                                      rightGyroscope = new Vector3(rightGyroscope.X, -rightGyroscope.Z, rightGyroscope.Y);
- 
+
 -                                    _rightMotionInput.Update(rightAccelerometer, rightGyroscope, (ulong)PerformanceCounter.ElapsedNanoseconds / 1000, controllerConfig.Motion.Sensitivity, (float)controllerConfig.Motion.GyroDeadzone);
 +                                    _rightMotionInput.Update(rightAccelerometer, rightGyroscope, (ulong)PerformanceCounter.ElapsedNanoseconds / 1000, motionConfig.Sensitivity, (float)motionConfig.GyroDeadzone);
                                  }
                                  else
                                  {
-@@ -320,9 +339,9 @@
+@@ -320,9 +350,9 @@ namespace Ryujinx.Input.HLE
                              }
                          }
                      }
@@ -117,21 +168,23 @@
                      {
 -                        int clientId = (int)controllerConfig.PlayerIndex;
 +                        int clientId = (int)_config.PlayerIndex;
- 
+
                          // First of all ensure we are registered
                          _cemuHookClient.RegisterClient(clientId, cemuControllerConfig.DsuServerHost, cemuControllerConfig.DsuServerPort);
-@@ -331,7 +350,7 @@
+@@ -331,7 +361,7 @@ namespace Ryujinx.Input.HLE
                          _cemuHookClient.RequestData(clientId, cemuControllerConfig.Slot);
                          _cemuHookClient.TryGetData(clientId, cemuControllerConfig.Slot, out _leftMotionInput);
- 
+
 -                        if (controllerConfig.ControllerType == ConfigControllerType.JoyconPair)
 +                        if (_config.ControllerType == ConfigControllerType.JoyconPair)
                          {
                              if (!cemuControllerConfig.MirrorInput)
                              {
+diff --git a/src/Ryujinx.Input/Motion/CemuHook/Client.cs b/src/Ryujinx.Input/Motion/CemuHook/Client.cs
+index 21e31a7..21c1170 100644
 --- a/src/Ryujinx.Input/Motion/CemuHook/Client.cs
 +++ b/src/Ryujinx.Input/Motion/CemuHook/Client.cs
-@@ -3,6 +3,7 @@
+@@ -3,6 +3,7 @@ using Ryujinx.Common;
  using Ryujinx.Common.Configuration.Hid;
  using Ryujinx.Common.Configuration.Hid.Controller;
  using Ryujinx.Common.Configuration.Hid.Controller.Motion;
@@ -139,11 +192,136 @@
  using Ryujinx.Common.Logging;
  using Ryujinx.Common.Memory;
  using Ryujinx.Input.HLE;
-@@ -328,14 +329,23 @@
-                     ulong timestamp = inputData.MotionTimestamp;
- 
-                     InputConfig config = _npadManager.GetPlayerInputConfigByIndex(clientId);
+@@ -28,6 +29,7 @@ namespace Ryujinx.Input.Motion.CemuHook
+         private readonly Dictionary<int, IPEndPoint> _hosts;
+         private readonly Dictionary<int, Dictionary<int, MotionInput>> _motionData;
+         private readonly Dictionary<int, UdpClient> _clients;
++        private readonly Dictionary<(int Player, int Slot), long> _lastReceived = new();
+
+         private readonly bool[] _clientErrorStatus = new bool[Enum.GetValues<PlayerIndex>().Length];
+         private readonly long[] _clientRetryTimer = new long[Enum.GetValues<PlayerIndex>().Length];
+@@ -64,6 +66,7 @@ namespace Ryujinx.Input.Motion.CemuHook
+                 _hosts.Clear();
+                 _clients.Clear();
+                 _motionData.Clear();
++                _lastReceived.Clear();
+             }
+         }
+
+@@ -96,7 +99,7 @@ namespace Ryujinx.Input.Motion.CemuHook
+
+                     Task.Run(() =>
+                     {
+-                        ReceiveLoop(player);
++                        ReceiveLoop(player, client, endPoint);
+                     });
+                 }
+                 catch (FormatException formatException)
+@@ -144,7 +147,9 @@ namespace Ryujinx.Input.Motion.CemuHook
+             {
+                 if (_motionData.TryGetValue(player, out Dictionary<int, MotionInput> value))
+                 {
+-                    if (value.TryGetValue(slot, out input))
++                    if (_lastReceived.TryGetValue((player, slot), out long arrival) &&
++                        PerformanceCounter.ElapsedMilliseconds - arrival <= 500 &&
++                        value.TryGetValue(slot, out input))
+                     {
+                         return true;
+                     }
+@@ -241,50 +246,56 @@ namespace Ryujinx.Input.Motion.CemuHook
+             return _clientRetryTimer[clientId] == 0 || PerformanceCounter.ElapsedMilliseconds - 5000 > _clientRetryTimer[clientId];
+         }
+
+-        public void ReceiveLoop(int clientId)
++        public void ResetClient(int clientId)
+         {
+-            if (_hosts.TryGetValue(clientId, out IPEndPoint endPoint) && _clients.TryGetValue(clientId, out UdpClient client))
++            lock (_clients)
+             {
+-                if (client != null && client.Client != null && client.Client.Connected)
++                if (_clients.Remove(clientId, out UdpClient client))
+                 {
+-                    try
++                    client.Dispose();
++                }
++                _hosts.Remove(clientId);
++                lock (_motionData)
++                {
++                    _motionData.Remove(clientId);
++                    for (int slot = 0; slot < 4; slot++) _lastReceived.Remove((clientId, slot));
++                }
++                ResetRetryTimer(clientId);
++                _clientErrorStatus[clientId] = false;
++            }
++        }
 +
++        private void ReceiveLoop(int clientId, UdpClient client, IPEndPoint endPoint)
++        {
++            try
++            {
++                while (_active)
++                {
++                    // Read from this registration's socket, never a replacement socket.
++                    byte[] data = client.Receive(ref endPoint);
++                    lock (_clients)
+                     {
+-                        while (_active)
++                        if (!_clients.TryGetValue(clientId, out UdpClient current) || current != client)
+                         {
+-                            byte[] data = Receive(clientId);
+-
+-                            if (data.Length == 0)
+-                            {
+-                                continue;
+-                            }
+-
+-                            Task.Run(() => HandleResponse(data, clientId));
++                            return;
+                         }
+-                    }
+-                    catch (SocketException socketException)
+-                    {
+-                        if (!_clientErrorStatus[clientId])
++                        // Process in receive order; a Task per packet can reorder timestamps.
++                        if (data.Length >= 20 && (BitConverter.ToUInt32(data, 16) != 0x100002 || data.Length >= 100))
+                         {
+-                            Logger.Warning?.PrintMsg(LogClass.Hid, $"Unable to receive data from motion source at {endPoint}. Error: {socketException.ErrorCode}");
++                            HandleResponse(data, clientId);
+                         }
+-
+-                        _clientErrorStatus[clientId] = true;
+-
+-                        RemoveClient(clientId);
+-
+-                        client?.Dispose();
+-
+-                        SetRetryTimer(clientId);
+                     }
+-                    catch (ObjectDisposedException)
++                }
++            }
++            catch (Exception exception) when (exception is SocketException || exception is ObjectDisposedException)
++            {
++                lock (_clients)
++                {
++                    if (_clients.TryGetValue(clientId, out UdpClient current) && current == client)
+                     {
+-                        _clientErrorStatus[clientId] = true;
+-
+-                        RemoveClient(clientId);
+-
+-                        client?.Dispose();
+-
++                        ResetClient(clientId);
+                         SetRetryTimer(clientId);
++                        Logger.Warning?.PrintMsg(LogClass.Hid, $"Motion source disconnected: {exception.Message}");
+                     }
+                 }
+             }
+@@ -329,20 +340,32 @@ namespace Ryujinx.Input.Motion.CemuHook
+
+                     InputConfig config = _npadManager.GetPlayerInputConfigByIndex(clientId);
+
 +                    // Motion config lives on controller configs and (patched)
 +                    // keyboard configs — accept both backends here.
 +                    MotionConfigController motionConfig = config switch
@@ -152,7 +330,7 @@
 +                        StandardKeyboardInputConfig keyboardConfig => keyboardConfig.Motion,
 +                        _ => null,
 +                    };
- 
++
                      lock (_motionData)
                      {
                          // Sanity check the configuration state and remove client if needed if needed.
@@ -166,28 +344,57 @@
 +                            motionConfig is CemuHookMotionConfigController cemuHookConfig)
                          {
                              int slot = inputData.Shared.Slot;
- 
---- a/nuget.config
-+++ b/nuget.config
-@@ -6,7 +6,9 @@
-         <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-         <!-- Only needed when using pre-release versions of Ryujinx.LibHac. -->
-         <add key="LibHacAlpha" value="https://git.ryujinx.app/api/v4/projects/17/packages/nuget/index.json" />
--        <add key="Ryujinx.UpdateClient" value="https://git.ryujinx.app/api/v4/projects/71/packages/nuget/index.json" />
-+        <!-- El feed Ryujinx.UpdateClient (projects/71) devuelve 404; los
-+             paquetes Ryujinx.UpdateClient y Ryujinx.Systems.Update.Common
-+             están publicados en nuget.org — el patrón * los cubre. -->
-     </packageSources>
-     <packageSourceMapping>
-         <!-- key value for <packageSource> should match key values from <packageSources> element -->
-@@ -14,10 +16,6 @@
-         <packageSource key="nuget.org">
-             <package pattern="*" />
-         </packageSource>
--        <packageSource key="Ryujinx.UpdateClient">
--            <package pattern="Ryujinx.UpdateClient" />
--            <package pattern="Ryujinx.Systems.Update.Common" />
--        </packageSource>
-         <packageSource key="LibHacAlpha">
-             <package pattern="Ryujinx.LibHac" />
-         </packageSource>
+
++                            if (slot != cemuHookConfig.Slot && slot != cemuHookConfig.AltSlot) break;
++
+                             if (_motionData.TryGetValue(clientId, out Dictionary<int, MotionInput> motionDataItem))
+                             {
+                                 if (motionDataItem.TryGetValue(slot, out MotionInput previousData))
+                                 {
++                                    if (timestamp <= previousData.TimeStamp) break;
+                                     previousData.Update(accelerometer, gyroscrope, timestamp, cemuHookConfig.Sensitivity, (float)cemuHookConfig.GyroDeadzone);
+                                 }
+                                 else
+@@ -362,6 +385,7 @@ namespace Ryujinx.Input.Motion.CemuHook
+
+                                 _motionData.Add(clientId, new Dictionary<int, MotionInput> { { slot, input } });
+                             }
++                            _lastReceived[(clientId, slot)] = PerformanceCounter.ElapsedMilliseconds;
+                         }
+                         else
+                         {
+diff --git a/src/Ryujinx/UI/Models/Input/KeyboardInputConfig.cs b/src/Ryujinx/UI/Models/Input/KeyboardInputConfig.cs
+index c8169b6..8b93da4 100644
+--- a/src/Ryujinx/UI/Models/Input/KeyboardInputConfig.cs
++++ b/src/Ryujinx/UI/Models/Input/KeyboardInputConfig.cs
+@@ -2,11 +2,13 @@ using CommunityToolkit.Mvvm.ComponentModel;
+ using Ryujinx.Ava.UI.ViewModels;
+ using Ryujinx.Common.Configuration.Hid;
+ using Ryujinx.Common.Configuration.Hid.Keyboard;
++using Ryujinx.Common.Configuration.Hid.Controller.Motion;
+
+ namespace Ryujinx.Ava.UI.Models.Input
+ {
+     public partial class KeyboardInputConfig : BaseModel
+     {
++        public MotionConfigController Motion { get; set; }
+         public string Id { get; set; }
+         public string Name { get; set; }
+         public ControllerType ControllerType { get; set; }
+@@ -63,6 +65,8 @@ namespace Ryujinx.Ava.UI.Models.Input
+                     return;
+                 }
+
++                Motion = keyboardConfig.Motion;
++
+                 LeftStickUp = keyboardConfig.LeftJoyconStick.StickUp;
+                 LeftStickDown = keyboardConfig.LeftJoyconStick.StickDown;
+                 LeftStickLeft = keyboardConfig.LeftJoyconStick.StickLeft;
+@@ -101,6 +105,7 @@ namespace Ryujinx.Ava.UI.Models.Input
+         {
+             StandardKeyboardInputConfig config = new()
+             {
++                Motion = Motion,
+                 Id = Id,
+                 Name = Name,
+                 Backend = InputBackendType.WindowKeyboard,

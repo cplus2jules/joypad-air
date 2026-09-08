@@ -1,4 +1,7 @@
 node_modules/
+.local/
+tools/ryujinx-build/tests/bin/
+tools/ryujinx-build/tests/obj/
 .DS_Store
 *.log
 .env

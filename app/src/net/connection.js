@@ -27,6 +27,7 @@ const INITIAL_SERVER_INFO = {
   kb: null,
   native: null,
   accessibility: null,
+  ryujinx: null,
   focus: null, // {ok, app} | null
   slots: [],   // números de slot ocupados
 };
@@ -51,7 +52,7 @@ export function useConnection(player, profile, opts) {
   const { settings } = useSettings();
   const host = useMemo(() => detectHost(settings.host), [settings.host]);
 
-  const name = profile?.name ?? `Chocorramito ${player}`;
+  const name = profile?.name || `Player ${player}`;
   const themeId = profile?.themeId ?? 'neon';
   const engage = profile?.engage ?? 0.55;
   const release = profile?.release ?? 0.40;
@@ -118,7 +119,11 @@ export function useConnection(player, profile, opts) {
             native: !!msg.native,
             accessibility: typeof msg.accessibility === 'boolean' ? msg.accessibility : null,
             focus: msg.focus ?? null,
+            ryujinx: msg.ryujinx ?? null,
           }));
+          break;
+        case 'ryujinx':
+          setServerInfo(si => ({ ...si, ryujinx: msg.state }));
           break;
         case 'focus':
           setServerInfo((si) => ({ ...si, focus: { ok: !!msg.ok, app: msg.app ?? null } }));

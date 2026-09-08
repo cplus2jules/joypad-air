@@ -1,0 +1,5 @@
+{
+  "ios": {
+    "NSMotionUsageDescription": "Use phone motion to aim and steer in games."
+  }
+}

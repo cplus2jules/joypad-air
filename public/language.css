@@ -1,0 +1,25 @@
+.language-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #f5f6f8;
+  font-size: 14px;
+  text-align: start;
+}
+.language-control select {
+  min-height: 44px;
+  padding: 8px 30px 8px 12px;
+  border: 1px solid #444b5b;
+  border-radius: 10px;
+  background: #1b1f29;
+  color: #f5f6f8;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  touch-action: manipulation;
+  color-scheme: dark;
+}
+.language-control select:focus-visible { outline: 2px solid #00c3e2; outline-offset: 3px; }
+.setup-language { margin-block: 24px 0; }
+.nav-links .language-control > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

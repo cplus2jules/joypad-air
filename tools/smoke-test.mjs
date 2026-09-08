@@ -20,6 +20,7 @@ import { encodeDataRequest, encodeInfoRequest, decodeResponse, MSG } from "../se
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const PORT = 3199;
+const DSU_TEST_PORT = 26797;
 
 let passed = 0;
 let failed = 0;
@@ -115,15 +116,27 @@ console.log("\n[3] server integrado: ws + validación + SOCD + takeover + /statu
 let serverLog = "";
 const proc = spawn("node", ["server/index.js"], {
   cwd: ROOT,
-  env: { ...process.env, FORCE_LOG: "1", PORT: String(PORT), GYRO_GAIN: "1" },
+  env: { ...process.env, JOYPAD_LANG: "en", FORCE_LOG: "1", PORT: String(PORT), DSU_PORT: String(DSU_TEST_PORT), GYRO_GAIN: "1" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 proc.stdout.on("data", (d) => { serverLog += d.toString(); });
 proc.stderr.on("data", (d) => { serverLog += d.toString(); });
 
 // esperar arranque
-for (let i = 0; i < 50 && !serverLog.includes("servidor corriendo"); i++) await sleep(100);
-check("server arranca", serverLog.includes("servidor corriendo"));
+for (let i = 0; i < 50 && !serverLog.includes("Joypad Air — server running"); i++) await sleep(100);
+check("server arranca", serverLog.includes("Joypad Air — server running"));
+
+// Setup cannot be triggered by other origins or by an invalid layout.
+{
+  const url = `http://127.0.0.1:${PORT}/api/ryujinx/setup`;
+  const forbidden = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://example.com" }, body: JSON.stringify({layout:"pro"}) });
+  check("setup rejects cross-origin requests without writing config", forbidden.status === 403);
+  const invalid = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Origin: `http://127.0.0.1:${PORT}`, "X-Joypad-Setup":"1" }, body: JSON.stringify({layout:"invalid"}) });
+  check("setup rejects unsupported layout with an actionable code", invalid.status === 400 && (await invalid.json()).code === "unsupported_layout");
+  const rejected = new WebSocket(`ws://127.0.0.1:${PORT}/?p=1`, { origin: "https://example.com" });
+  const code = await new Promise((resolve,reject) => { rejected.on("close",resolve); rejected.on("error",reject); });
+  check("websocket rejects a foreign browser origin", code === 1008);
+}
 
 const wsUrl = (p) => `ws://127.0.0.1:${PORT}/?p=${p}`;
 function connect(p) {
@@ -205,7 +218,8 @@ const logSince = (mark) => serverLog.slice(mark);
   // config: cambiar nombre
   ws.send(JSON.stringify({ t: "config", name: "Wanda", engage: 0.5, release: 0.35 }));
   await sleep(150);
-  check("config aplica nombre", serverLog.includes('se llama "Wanda"'));
+  const namedStatus = await (await fetch(`http://127.0.0.1:${PORT}/status`)).json();
+  check("config aplica nombre", namedStatus.players?.["1"]?.name === "Wanda");
 
   // takeover: cliente nuevo en slot 1 mientras este retiene una tecla
   ws.send(JSON.stringify({ t: "btn", k: "b", d: true })); // X física
@@ -255,7 +269,7 @@ console.log("\n[4] DSU: ws motion → data responses con transformación de ejes
   const { ws, msgs } = await connect(1);
   await sleep(100);
 
-  const dsuPort = 26760; // el server de test lo abre en el default (loopback)
+  const dsuPort = DSU_TEST_PORT; // el server de test lo abre en el default (loopback)
   const udp = dgram.createSocket("udp4");
   udp.connect(dsuPort, "127.0.0.1");
   const responses = [];
@@ -384,25 +398,30 @@ console.log("\n[5] fallback de puerto: segunda instancia no crashea");
   let log2 = "";
   const proc2 = spawn("node", ["server/index.js"], {
     cwd: ROOT,
-    env: { ...process.env, FORCE_LOG: "1", PORT: String(PORT), DSU_PORT: "26798" },
+    env: { ...process.env, JOYPAD_LANG: "es", FORCE_LOG: "1", PORT: String(PORT), DSU_PORT: String(DSU_TEST_PORT) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   proc2.stdout.on("data", (d) => { log2 += d.toString(); });
   proc2.stderr.on("data", (d) => { log2 += d.toString(); });
-  for (let i = 0; i < 50 && !log2.includes("servidor corriendo"); i++) await sleep(100);
-  check("segunda instancia arranca (no EADDRINUSE fatal)", log2.includes("servidor corriendo"));
-  check("avisa del puerto ocupado", log2.includes("ocupado"));
+  for (let i = 0; i < 50 && !log2.includes("Joypad Air — servidor en marcha"); i++) await sleep(100);
+  check("segunda instancia arranca en español (no EADDRINUSE fatal)", log2.includes("Joypad Air — servidor en marcha"));
+  check("avisa del puerto ocupado en español", log2.includes(`Puerto ${PORT} ocupado`));
+  check("explica el conflicto DSU en español", log2.includes(`[dsu] El puerto de movimiento 127.0.0.1:${DSU_TEST_PORT} ya está en uso.`));
   let st2 = null;
   try {
     st2 = await (await fetch(`http://127.0.0.1:${PORT + 1}/status`)).json();
   } catch { /* sin fallback */ }
   check(`escucha en ${PORT + 1} con firma joypad-air`, st2?.app === "joypad-air" && st2?.port === PORT + 1);
+  check("DSU ocupado no se anuncia como disponible", st2?.dsu?.listening === false);
+  check("idioma de Terminal no cambia el identificador del backend", st2?.backend === "log (forced by FORCE_LOG=1)");
   proc2.kill("SIGTERM");
   await sleep(300);
+  check("cierre del servidor en español", log2.includes("Soltando las teclas y cerrando el servidor"));
 }
 
 proc.kill("SIGTERM");
 await sleep(200);
+check("cierre del servidor en inglés", serverLog.includes("Releasing keys and shutting down"));
 
 console.log(`\n${"=".repeat(40)}\nResultado: ${passed} OK, ${failed} FALLOS\n`);
 process.exit(failed === 0 ? 0 : 1);

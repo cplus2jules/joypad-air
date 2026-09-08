@@ -6,9 +6,11 @@
 // FORCE_LOG=1 fuerza el backend log (lo usan los smoke tests para verificar
 // el orden de press/release sin tocar el teclado real).
 
+import { t } from "./i18n.js";
+
 export async function createKeyboard() {
   if (process.env.FORCE_LOG === "1") {
-    return logBackend("log (forzado con FORCE_LOG=1)");
+    return logBackend("log (forced by FORCE_LOG=1)", "keyboard.forced");
   }
   try {
     const nut = await import("@nut-tree-fork/nut-js");
@@ -18,14 +20,15 @@ export async function createKeyboard() {
     const resolveKey = (name) => {
       const k = Key[name];
       if (k === undefined) {
-        console.warn(`[keyboard] tecla desconocida: ${name}`);
+        console.warn(t("keyboard.unknown", { key: name }));
         return null;
       }
       return k;
     };
 
     return {
-      name: "nut-js (nativo macOS)",
+      name: "nut-js (native macOS)",
+      label: t("keyboard.native"),
       isNative: true,
       down: async (name) => {
         const k = resolveKey(name);
@@ -43,15 +46,16 @@ export async function createKeyboard() {
       },
     };
   } catch (err) {
-    console.warn("[keyboard] @nut-tree-fork/nut-js no disponible — usando backend log");
-    console.warn(`[keyboard] razón: ${err.message}`);
-    return logBackend("log (solo consola)");
+    console.warn(t("keyboard.unavailable"));
+    console.warn(t("keyboard.reason", { message: err.message }));
+    return logBackend("log (console only)", "keyboard.log");
   }
 }
 
-function logBackend(name) {
+function logBackend(name, labelKey) {
   return {
     name,
+    label: t(labelKey),
     isNative: false,
     down: (name_) => console.log(`  DOWN ${name_}`),
     up: (name_) => console.log(`  UP   ${name_}`),

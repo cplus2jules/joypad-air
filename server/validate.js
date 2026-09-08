@@ -43,8 +43,12 @@ export function validateMessage(msg, map) {
         out.name = msg.name.trim().slice(0, 24);
       }
       if (typeof msg.theme === "string") out.theme = msg.theme.slice(0, 24);
-      if (msg.orientation === "landscape-left" || msg.orientation === "landscape-right") {
+      if (["landscape-left", "landscape-right", "portrait"].includes(msg.orientation)) {
         out.orientation = msg.orientation;
+      }
+      if (msg.motionProfile !== undefined) {
+        if (!["legacy", "just-dance"].includes(msg.motionProfile)) return null;
+        out.motionProfile = msg.motionProfile;
       }
       const engage = num(msg.engage);
       if (engage !== null) out.engage = clamp(engage, 0.3, 0.9);
@@ -68,6 +72,8 @@ export function validateMessage(msg, map) {
       }
       return {
         t: "motion",
+        ...(Number.isSafeInteger(msg.seq) && msg.seq >= 0 ? { seq: msg.seq } : {}),
+        ...(typeof msg.sessionId === "string" ? { sessionId: msg.sessionId.slice(0, 64) } : {}),
         gx: clamp(gx, -2000, 2000),
         gy: clamp(gy, -2000, 2000),
         gz: clamp(gz, -2000, 2000),

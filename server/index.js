@@ -9,6 +9,7 @@ import QRCode from "qrcode";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
+import { inspectRyujinx, configureRyujinx } from "./ryujinx.js";
 import { createKeyboard } from "./keyboard.js";
 import { MAPPINGS } from "./mappings.js";
 import { createKeyQueue } from "./key-queue.js";
@@ -17,9 +18,11 @@ import { createStickEngine } from "./stick-engine.js";
 import { createFocusWatcher } from "./focus.js";
 import { checkAccessibility, accessibilityStatus, printAccessibilityHelp, requestAccessibility } from "./accessibility.js";
 import { createDsuServer } from "./dsu/server.js";
+import { t } from "./i18n.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASE_PORT = Number(process.env.PORT) || 3001;
+const BIND_HOST = process.env.JOYPAD_BIND_HOST || "0.0.0.0";
 let activePort = BASE_PORT; // puede subir si el puerto está ocupado (fallback)
 let shuttingDown = false;
 
@@ -35,13 +38,13 @@ const app = express();
 app.use(express.static(join(__dirname, "..", "public")));
 
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: 8192 });
 // ws re-emite los errores del http server en el WSS; sin listener serían un
 // throw fatal ANTES de que el fallback de puerto (server.on('error')) actúe
 wss.on("error", () => {});
 
 const keyboard = await createKeyboard();
-console.log(`[server] keyboard backend: ${keyboard.name}`);
+console.log(t("server.keyboard", { backend: keyboard.label }));
 
 const queue = createKeyQueue(keyboard);
 let invalidMsgs = 0;
@@ -54,6 +57,7 @@ const dsu = process.env.DSU_OFF === "1"
   : createDsuServer({
       host: process.env.DSU_HOST || "127.0.0.1",
       port: Number(process.env.DSU_PORT) || 26760,
+      onError: err => { if (process.env.JOYPAD_STRICT_PORTS === "1" && err.code === "EADDRINUSE") process.exit(1); },
     });
 
 const players = {
@@ -70,6 +74,9 @@ function createPlayerState(num) {
     theme: null,
     orientation: "landscape-right",
     motion: false,
+    motionProfile: "legacy",
+    motionSeq: -1,
+    motionDropped: 0,
     buttons: new Set(),
     stickEngines: { L: createStickEngine(), R: createStickEngine() },
     stickHeld: { L: new Set(), R: new Set() },
@@ -80,7 +87,8 @@ function createPlayerState(num) {
 }
 
 function displayName(p) {
-  return p.name ? `Player ${p.num} (${p.name})` : `Player ${p.num}`;
+  const player = t("player", { n: p.num });
+  return p.name ? `${player} (${p.name})` : player;
 }
 
 function releaseAllForPlayer(p) {
@@ -156,10 +164,14 @@ function handleStick(p, stick, x, y) {
 function applyConfig(p, msg) {
   if (msg.name) {
     p.name = msg.name;
-    console.log(`[ws] Player ${p.num} se llama "${p.name}"`);
+    console.log(t("ws.named", { n: p.num, name: p.name }));
   }
   if (msg.theme) p.theme = msg.theme;
   if (msg.orientation) p.orientation = msg.orientation;
+  if (msg.motionProfile && p.motionProfile !== msg.motionProfile) {
+    dsu?.quiesceSlot(p.num - 1);
+    p.motionProfile = msg.motionProfile;
+  }
   if (msg.motion !== undefined) {
     p.motion = msg.motion;
     // GIRO apagado → publicar un último sample con gyro a cero y soltar el
@@ -190,15 +202,16 @@ function broadcastSlots() {
 
 // ── Foco de ventana ─────────────────────────────────────────────────────────
 const focusWatcher = createFocusWatcher({
-  match: "ryujinx",
+  match: process.env.TARGET_APP || "ryujinx",
   intervalMs: 2000,
   isActive: () => Object.values(players).some((p) => p.connected),
   onChange: (state) => {
     console.log(
       state.ok
-        ? "[focus] Ryujinx al frente ✓"
-        : `[focus] al frente: ${state.app} — las teclas NO van a Ryujinx`
+        ? t("focus.ready")
+        : t("focus.other", { app: state.app })
     );
+    if (!state.ok) for (const p of Object.values(players)) releaseAllForPlayer(p);
     broadcast({ t: "focus", ok: state.ok, app: state.app });
   },
 });
@@ -208,11 +221,17 @@ focusWatcher.start();
 wss.on("connection", (socket, req) => {
   const ip = req.socket.remoteAddress || "";
   if (!isPrivateAddress(ip)) {
-    console.warn(`[ws] conexión rechazada desde IP no privada: ${ip}`);
-    socket.close(1008, "solo LAN");
+    console.warn(t("ws.rejected", { ip }));
+    socket.close(1008, "LAN only");
     return;
   }
 
+  // Browsers must originate from this server; native apps do not send Origin.
+  if (req.headers.origin) {
+    let sameOrigin = false;
+    try { sameOrigin = new URL(req.headers.origin).host === req.headers.host; } catch {}
+    if (!sameOrigin) { socket.close(1008, "origin rejected"); return; }
+  }
   const url = new URL(req.url, "http://x");
   const playerNum = url.searchParams.get("p") === "2" ? 2 : 1;
   const p = players[playerNum];
@@ -223,22 +242,30 @@ wss.on("connection", (socket, req) => {
   if (p.connected && p.socket && p.socket !== socket) {
     const old = p.socket;
     releaseAllForPlayer(p);
-    old.close(4000, "reemplazado por otro mando");
+    old.close(4000, "replaced by another controller");
   }
 
   p.connected = true;
   p.socket = socket;
+  dsu?.quiesceSlot(p.num - 1);
+  p.motion = false;
+  p.motionProfile = "legacy";
+  p.orientation = "landscape-right";
+  p.motionSeq = -1;
+  p.motionDropped = 0;
   socket.isAlive = true;
   const allowed = makeRateLimiter(300);
-  console.log(`[ws] ${displayName(p)} conectado desde ${ip}`);
+  console.log(t("ws.connected", { player: displayName(p), ip }));
 
   send(socket, {
     t: "hello",
+    motionProfiles: ["just-dance"],
     player: playerNum,
     kb: keyboard.name,
     native: keyboard.isNative,
     accessibility: accessibilityStatus(),
     focus: focusWatcher.last,
+    ryujinx: ryujinxState,
   });
   broadcastSlots();
 
@@ -252,7 +279,7 @@ wss.on("connection", (socket, req) => {
     // el estado del cliente nuevo (tecla pegada que nadie suelta).
     if (p.socket !== socket || shuttingDown) return;
     if (!allowed()) {
-      console.warn(`[ws] ${displayName(p)} supera el rate limit — cerrando`);
+      console.warn(t("ws.rateLimit", { player: displayName(p) }));
       socket.close(1008, "rate limit");
       return;
     }
@@ -275,9 +302,11 @@ wss.on("connection", (socket, req) => {
     try {
       switch (msg.t) {
         case "btn":
+          if (keyboard.isNative && focusWatcher.last?.ok !== true && msg.d) break;
           handleButton(p, msg.k, msg.d);
           break;
         case "stick":
+          if (keyboard.isNative && focusWatcher.last?.ok !== true && (msg.x || msg.y)) break;
           handleStick(p, msg.s, msg.x, msg.y);
           break;
         case "ping":
@@ -286,21 +315,25 @@ wss.on("connection", (socket, req) => {
           break;
         case "config":
           applyConfig(p, msg);
+          send(socket, { t: "config-ack", motionProfile: p.motionProfile, motion: p.motion, orientation: p.orientation });
           break;
         case "motion":
+          if (p.motionProfile === "just-dance" && (!p.motion || p.orientation !== "portrait")) break;
+          if (msg.seq !== undefined && msg.seq <= p.motionSeq) { p.motionDropped++; break; }
+          if (msg.seq !== undefined) p.motionSeq = msg.seq;
           p.motion = true;
-          dsu?.updateSlot(p.num - 1, msg, p.orientation);
+          dsu?.updateSlot(p.num - 1, msg, p.orientation, p.motionProfile);
           break;
       }
     } catch (e) {
       invalidMsgs++;
-      console.error(`[ws] error procesando '${msg.t}' de ${displayName(p)}:`, e.message);
+      console.error(t("ws.processing", { type: msg.t, player: displayName(p) }), e.message);
     }
   });
 
   socket.on("close", () => {
     if (p.socket !== socket) return; // socket viejo tras un takeover
-    console.log(`[ws] ${displayName(p)} desconectado`);
+    console.log(t("ws.disconnected", { player: displayName(p) }));
     releaseAllForPlayer(p);
     p.connected = false;
     p.socket = null;
@@ -363,27 +396,36 @@ app.get("/qr.png", async (_req, res) => {
 // ── Chequeo de sincronización con Ryujinx ───────────────────────────────────
 // Reutiliza el tooling (--check, exit 0 = sincronizado). Cacheado: al boot y
 // bajo demanda con /status?refresh=1.
-let ryujinxState = { found: null, synced: null };
-
+const ryujinxConfigDir = process.env.RYUJINX_CONFIG_DIR;
+let ryujinxState = inspectRyujinx(ryujinxConfigDir);
 function checkRyujinx() {
-  return new Promise((resolve) => {
-    const tool = join(__dirname, "..", "tools", "ryujinx-setup.mjs");
-    execFile(process.execPath, [tool, "--check"], { timeout: 5000 }, (err, _out, stderr) => {
-      if (stderr.includes("No existe") || /no existe .*Config\.json/i.test(_out + stderr)) {
-        ryujinxState = { found: false, synced: false };
-      } else {
-        ryujinxState = { found: true, synced: !err };
-      }
-      resolve(ryujinxState);
-    });
-  });
+  const next = inspectRyujinx(ryujinxConfigDir);
+  if (JSON.stringify(next) !== JSON.stringify(ryujinxState)) broadcast({ t: "ryujinx", state: next });
+  ryujinxState = next;
+  return next;
 }
-checkRyujinx();
+setInterval(checkRyujinx, 5000).unref();
+
+// Configuration writes are available only from a same-origin page on this Mac.
+app.post("/api/ryujinx/setup", express.json({ limit: "1kb" }), (req, res) => {
+  const remote = req.socket.remoteAddress;
+  const loopback = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(remote);
+  const localHost = ["localhost", "127.0.0.1", "[::1]"].includes(req.hostname);
+  if (!loopback || !localHost || req.get("origin") !== `http://${req.get("host")}` || req.get("x-joypad-setup") !== "1") {
+    return res.status(403).json({ error: "Open Connection setup at localhost on your Mac to configure Ryujinx." });
+  }
+  if (!["pro", "sideways"].includes(req.body?.layout)) return res.status(400).json({ error: "Choose a supported controller layout.", code: "unsupported_layout" });
+  try {
+    const result = configureRyujinx({ configDir: ryujinxConfigDir, types: req.body.layout === "sideways" ? ["JoyconLeft", "JoyconRight"] : ["ProController", "ProController"] });
+    checkRyujinx();
+    res.json(result);
+  } catch (e) { res.status(409).json({ error: e.message, code: e.code ?? "setup_failed" }); }
+});
 
 // ── Estado ──────────────────────────────────────────────────────────────────
 app.get("/status", async (req, res) => {
   if (req.query.refresh === "1") {
-    await Promise.all([checkAccessibility(), checkRyujinx()]);
+    await Promise.all([keyboard.isNative ? checkAccessibility() : null, checkRyujinx()]);
   }
   res.set("Access-Control-Allow-Origin", "*");
   res.json({
@@ -391,6 +433,7 @@ app.get("/status", async (req, res) => {
     v: 1,
     version: VERSION,
     port: activePort,
+    urls: getLocalIPs().map(ip => `http://${ip}:${activePort}`),
     ryujinx: ryujinxState,
     backend: keyboard.name,
     native: keyboard.isNative,
@@ -405,6 +448,9 @@ app.get("/status", async (req, res) => {
           name: p.name,
           theme: p.theme,
           motion: p.motion,
+          motionProfile: p.motionProfile,
+          motionSeq: p.motionSeq,
+          motionDropped: p.motionDropped,
           rttMs: p.rttMs,
           msgsPerSec: p.msgsPerSec,
           heldButtons: [...p.buttons],
@@ -439,15 +485,16 @@ function getLocalIPs() {
 // la lista, abrir el panel correcto de Ajustes y esperar a que el usuario
 // active la casilla — el server arranca igual (QR + /setup disponibles) y
 // avisa solo cuando el permiso llega.
-const accessibilityOk = await checkAccessibility();
+const accessibilityOk = keyboard.isNative ? await checkAccessibility() : "unknown";
 const needsOnboarding = keyboard.isNative && accessibilityOk === false;
 if (needsOnboarding) {
   printAccessibilityHelp();
-  requestAccessibility();
+  // Permission is an explicit user action; startup never changes system settings.
+  if (process.env.ACCESSIBILITY_PROMPT === "1") requestAccessibility();
   const poll = setInterval(async () => {
     if ((await checkAccessibility()) === true) {
       clearInterval(poll);
-      console.log("\n✓ Permiso de Accesibilidad concedido — ¡a jugar!\n");
+      console.log(t("access.granted"));
       broadcast({ t: "accessibility", ok: true });
     }
   }, 2000);
@@ -458,54 +505,55 @@ if (needsOnboarding) {
 // vieja viva) no debe terminar en un stack trace críptico de EADDRINUSE.
 let listenTries = 0;
 server.on("error", (err) => {
-  if (err.code === "EADDRINUSE" && listenTries < 5) {
+  if (err.code === "EADDRINUSE" && listenTries < 5 && process.env.JOYPAD_STRICT_PORTS !== "1") {
     listenTries++;
-    console.warn(`[server] puerto ${activePort} ocupado (¿otra instancia corriendo?) — probando ${activePort + 1}`);
+    console.warn(t("server.portBusy", { port: activePort, nextPort: activePort + 1 }));
     activePort++;
-    setTimeout(() => server.listen(activePort, "0.0.0.0"), 100);
+    setTimeout(() => server.listen(activePort, BIND_HOST), 100);
     return;
   }
-  console.error(`[server] no pude abrir el puerto ${activePort}: ${err.message}`);
+  console.error(t("server.portError", { port: activePort, message: err.message }));
   process.exit(1);
 });
 
 server.on("listening", () => {
+  if (process.env.JOYPAD_QUIET_STARTUP === "1") {
+    console.log(`[server] Internal bridge listening on ${BIND_HOST}:${activePort}`);
+    return;
+  }
   const ips = getLocalIPs();
   console.log("");
-  console.log("El Control Super Pro Max — servidor corriendo");
-  console.log("=============================================");
+  console.log(t("server.ready"));
+  console.log("=".repeat(t("server.ready").length));
   if (ips.length === 0) {
-    console.log(`Servidor en http://localhost:${activePort}`);
-    console.log("(no se detectaron interfaces de red — conecta el Mac a WiFi)");
+    console.log(t("server.local", { port: activePort }));
+    console.log(t("server.noNetwork"));
   } else {
     for (const ip of ips) {
       const url = `http://${ip}:${activePort}`;
       console.log("");
-      console.log(`Abre esta URL en el iPhone:  ${url}`);
+      console.log(t("server.phoneUrl", { url }));
       qrcode.generate(url, { small: true });
     }
   }
   console.log("");
-  console.log("En el iPhone:");
-  console.log("  1. Abre la URL en Safari");
-  console.log("  2. Compartir -> Agregar a pantalla de inicio");
-  console.log("  3. Abre la app desde el icono, elige Player 1 o Player 2");
+  console.log(t("server.phoneSteps"));
   console.log("");
-  console.log(`Panel de estado: http://localhost:${activePort}/setup`);
-  console.log("Mapeo de teclas para Ryujinx: npm run ryujinx:setup (ver README.md)");
-  console.log("Ctrl+C para detener");
+  console.log(t("server.dashboard", { port: activePort }));
+  console.log(t("server.mapping"));
+  console.log(t("server.stop"));
 
   // Si falta el permiso de Accesibilidad, abrir el panel guiado en el
   // navegador (solo entonces — en el uso diario no estorba).
-  if (needsOnboarding) {
+  if (needsOnboarding && process.env.ACCESSIBILITY_PROMPT === "1") {
     execFile("open", [`http://localhost:${activePort}/setup`]);
   }
 });
 
-server.listen(activePort, "0.0.0.0");
+server.listen(activePort, BIND_HOST);
 
 async function shutdown() {
-  console.log("\nLiberando teclas y cerrando...");
+  console.log(t("server.shutdown"));
   // Dejar de procesar mensajes nuevos para que la cola pueda drenar los
   // releases (bajo inundación, los 'up' finales quedan detrás del backlog).
   shuttingDown = true;

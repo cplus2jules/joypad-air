@@ -1,0 +1,24 @@
+#!/usr/bin/env node
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { DEFAULT_CONFIG_DIR, configureRyujinx, ryujinxRunning } from '../../server/ryujinx.js';
+const local = fileURLToPath(new URL('../../.local/', import.meta.url));
+const dest = join(local, 'ryujinx-motion-data');
+if (existsSync(dest)) throw new Error(`Test data already exists; preserved: ${dest}`);
+if (ryujinxRunning()) throw new Error('Quit Ryujinx before copying its data for the motion test.');
+const original = readFileSync(join(DEFAULT_CONFIG_DIR, 'Config.json'));
+mkdirSync(local, {recursive:true, mode:0o700});
+cpSync(DEFAULT_CONFIG_DIR, dest, {recursive:true, errorOnExist:true, force:false});
+const baseline = join(local, 'baseline');mkdirSync(baseline, {recursive:true,mode:0o700});
+writeFileSync(join(baseline,'Config.json'),original,{mode:0o600});
+cpSync(join(DEFAULT_CONFIG_DIR,'profiles'),join(baseline,'profiles'),{recursive:true,errorOnExist:true,force:false});
+const config = JSON.parse(readFileSync(join(dest,'Config.json'),'utf8'));
+config.update_checker_type='Off';
+writeFileSync(join(dest,'Config.json'),JSON.stringify(config,null,2));
+const result=configureRyujinx({configDir:dest,preset:'just-dance'});
+const hash=b=>createHash('sha256').update(b).digest('hex');
+if(hash(original)!==hash(readFileSync(join(DEFAULT_CONFIG_DIR,'Config.json'))))throw new Error('Original configuration changed while copying; recheck baseline.');
+writeFileSync(join(baseline,'baseline.json'),JSON.stringify({created:new Date().toISOString(),source:DEFAULT_CONFIG_DIR,configSHA256:hash(original),emulatorRevision:'e2143d43bcb6762340d8a01f20e7b5fdf104f02f',testData:dest},null,2));
+console.log(JSON.stringify({testData:dest,originalConfigSHA256:hash(original),...result},null,2));

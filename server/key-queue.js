@@ -5,6 +5,8 @@
 // adelantar a su press cuando llegan con <10ms de diferencia (tap rápido).
 // Una sola cola garantiza el orden exacto de llegada, players incluidos.
 
+import { t } from "./i18n.js";
+
 export function createKeyQueue(keyboard) {
   let chain = Promise.resolve();
   let depth = 0;
@@ -13,7 +15,7 @@ export function createKeyQueue(keyboard) {
     // type: "down" | "up", key: nombre de tecla nut-js
     push(type, key) {
       if (depth > 256) {
-        console.warn(`[queue] profundidad ${depth} — ¿inundación de mensajes?`);
+        console.warn(t("queue.busy", { depth }));
       }
       depth++;
       chain = chain

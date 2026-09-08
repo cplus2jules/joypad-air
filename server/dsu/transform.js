@@ -59,7 +59,14 @@ function applyMatrix(m, v) {
 
 // sample: { ax, ay, az, gx, gy, gz, ts } (marco device)
 // devuelve: { ax, ay, az, pitch, yaw, roll, tsUs } (marco DSU)
-export function toDsuFrame(sample, orientation = "landscape-right") {
+export function toDsuFrame(sample, orientation = "landscape-right", motionProfile = "legacy") {
+  // Provisional right-hand portrait basis. Apply once, with physical unit gain.
+  // Real grip/Just Dance scoring still needs the physical-device validation gate.
+  if (motionProfile === "just-dance") return {
+    ax: sample.ax, ay: sample.az, az: -sample.ay,
+    pitch: sample.gx, yaw: sample.gz, roll: -sample.gy,
+    tsUs: sample.ts,
+  };
   const t = TRANSFORMS[orientation] ?? TRANSFORMS["landscape-right"];
   const [ax, ay, az] = applyMatrix(t.accel, [sample.ax, sample.ay, sample.az]);
   const [pitch, yaw, roll] = applyMatrix(t.gyro, [sample.gx, sample.gy, sample.gz]);

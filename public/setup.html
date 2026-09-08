@@ -1,194 +1,38 @@
-<!DOCTYPE html>
-<html lang="es">
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>El Control Super Pro Max — Setup</title>
-  <style>
-    :root {
-      --bg: #0b0d12; --card: #14171e; --border: #232733;
-      --ink: #f5f6f8; --dim: #9aa0ad;
-      --red: #ff3d54; --blue: #00c3e2; --ok: #5ad07a; --warn: #faa005; --err: #ff6f7a;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: var(--bg); color: var(--ink); min-height: 100vh;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      padding: 32px 20px 60px;
-    }
-    .wrap { max-width: 860px; margin: 0 auto; }
-    h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
-    h1 .grad {
-      background: linear-gradient(90deg, var(--red), var(--blue));
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-    }
-    .sub { color: var(--dim); margin: 6px 0 28px; font-size: 14px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
-    .card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 16px; padding: 18px;
-    }
-    .card h2 {
-      font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
-      text-transform: uppercase; color: var(--dim); margin-bottom: 12px;
-    }
-    .row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 14px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
-    .dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
-    .dot.err { background: var(--err); box-shadow: 0 0 8px var(--err); }
-    .dot.off { background: #3a3d45; }
-    .hint { color: var(--dim); font-size: 12px; margin-top: 4px; padding-left: 20px; line-height: 1.5; }
-    .qr-card { text-align: center; grid-column: 1 / -1; }
-    .qr-card img {
-      width: 200px; height: 200px; border-radius: 12px; background: #fff; padding: 10px;
-      image-rendering: pixelated;
-    }
-    .url { font-family: Menlo, monospace; font-size: 15px; color: var(--blue); margin-top: 10px; }
-    .steps { color: var(--dim); font-size: 13px; margin-top: 12px; line-height: 1.8; }
-    .player {
-      display: flex; align-items: center; gap: 12px; padding: 10px;
-      border: 1px solid var(--border); border-radius: 12px; margin-top: 8px;
-    }
-    .player .num {
-      width: 34px; height: 34px; border-radius: 10px; display: flex;
-      align-items: center; justify-content: center; font-weight: 800; font-size: 16px;
-    }
-    .p1 .num { background: rgba(255, 61, 84, .15); color: var(--red); }
-    .p2 .num { background: rgba(0, 195, 226, .15); color: var(--blue); }
-    .player .info { flex: 1; }
-    .player .name { font-weight: 700; font-size: 14px; }
-    .player .meta { color: var(--dim); font-size: 12px; }
-    .badge {
-      font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px;
-    }
-    .badge.on { background: rgba(90, 208, 122, .15); color: var(--ok); }
-    .badge.off { background: rgba(154, 160, 173, .12); color: var(--dim); }
-    footer { color: var(--dim); font-size: 12px; text-align: center; margin-top: 30px; }
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101112"><title data-i18n="setup.pageTitle">Connection setup — Joypad Air</title>
+<link rel="icon" href="icon.svg"><link rel="stylesheet" href="controller.css"><link rel="stylesheet" href="setup.css"><link rel="stylesheet" href="language.css">
 </head>
 <body>
-  <div class="wrap">
-    <h1>🎮 <span class="grad">El Control Super Pro Max</span></h1>
-    <p class="sub">Estado del sistema en vivo — esta página se actualiza sola cada 2 segundos.</p>
+<div class="setup-page">
+  <nav class="site-nav" aria-label="Main navigation" data-i18n-aria-label="setup.navigation"><a href="/" class="wordmark"><span class="brand-symbol" aria-hidden="true"><i></i><i></i></span>joypad<span class="wordmark-air">air</span></a><div class="nav-links"><label class="language-control" for="setup-language"><span data-i18n="language">Language</span><select id="setup-language" data-language-select><option value="en" lang="en">English</option><option value="es" lang="es">Español</option></select></label><a class="back-link" href="/"><span data-i18n="setup.openController">Open controller</span> <span aria-hidden="true">↗</span></a></div></nav>
+  <main>
 
-    <div class="grid">
-      <div class="card">
-        <h2>Mac</h2>
-        <div class="row"><span class="dot off" id="d-backend"></span><span id="t-backend">Comprobando backend…</span></div>
-        <div class="row"><span class="dot off" id="d-access"></span><span id="t-access">Comprobando permiso de Accesibilidad…</span></div>
-        <div class="hint" id="h-access" hidden>
-          Ajustes del Sistema → Privacidad y seguridad → <b>Accesibilidad</b> →
-          activa la casilla de <b>Terminal</b> (o Play). El server lo detecta solo.
-        </div>
-        <div class="row"><span class="dot off" id="d-focus"></span><span id="t-focus">Comprobando foco…</span></div>
-        <div class="hint" id="h-focus" hidden>
-          Las teclas viajan a la app con foco: haz click en la ventana de Ryujinx antes de jugar.
-        </div>
-        <div class="row"><span class="dot off" id="d-ryu"></span><span id="t-ryu">Comprobando Ryujinx…</span></div>
-        <div class="hint" id="h-ryu" hidden>
-          Corre <b>npm run ryujinx:setup</b> en la carpeta del proyecto (con
-          Ryujinx cerrado) para configurar los mandos automáticamente.
-        </div>
-        <div class="row"><span class="dot off" id="d-dsu"></span><span id="t-dsu">Motion (DSU)…</span></div>
-      </div>
-
-      <div class="card">
-        <h2>Mandos</h2>
-        <div class="player p1">
-          <div class="num">1</div>
-          <div class="info"><div class="name" id="p1-name">Chocorramito 1</div><div class="meta" id="p1-meta">—</div></div>
-          <span class="badge off" id="p1-badge">libre</span>
-        </div>
-        <div class="player p2">
-          <div class="num">2</div>
-          <div class="info"><div class="name" id="p2-name">Chocorramito 2</div><div class="meta" id="p2-meta">—</div></div>
-          <span class="badge off" id="p2-badge">libre</span>
-        </div>
-      </div>
-
-      <div class="card qr-card">
-        <h2>Conecta tu iPhone</h2>
-        <img src="/qr.png" alt="QR para el iPhone" onerror="this.style.display='none'">
-        <div class="url" id="t-url">—</div>
-        <div class="steps">
-          1. Escanea el QR con la Cámara (misma WiFi) · 2. Se abre en Safari ·
-          3. Compartir → <b>Agregar a pantalla de inicio</b> · 4. Ábrelo desde el icono
-        </div>
+    <header class="setup-heading"><div><span class="eyebrow" data-i18n="setup.eyebrow">YOUR MAC / CONNECTION SETUP</span><h1 data-i18n="setup.heading">Ready when you are.</h1><p data-i18n="setup.intro">Connect your phone. Set up Ryujinx. Find your game.</p></div><button id="refresh" class="outline-button" type="button"><span aria-hidden="true">↻</span> <span data-i18n="setup.recheck">Recheck connection</span></button></header>
+    <div id="offline" class="notice" role="status" hidden data-i18n="setup.offline">The Mac server is unreachable. Start it again, then recheck the connection.</div>
+    <div class="setup-grid">
+      <section class="phone-panel" aria-labelledby="phone-title"><span class="eyebrow" data-i18n="setup.phoneStep">01 / CONNECT YOUR PHONE</span><h2 id="phone-title" data-i18n="setup.phoneTitle">Scan. Select. Play.</h2><p data-i18n="setup.scanHelp">Open your phone’s camera and scan the code. Keep both devices on the same Wi-Fi.</p><div class="qr-tile"><img src="/qr.png" alt="Scan to open the controller on your phone" data-i18n-alt="qrAlt" width="208" height="208" id="qr"></div><p id="qr-error" hidden data-i18n="setup.noWifi">No Wi-Fi address found. Connect your Mac to Wi-Fi, then recheck.</p><div class="address-row"><a id="phone-url" href="/" data-i18n="setup.findingWifi">Finding your Wi-Fi address…</a><button id="copy" type="button" aria-label="Copy controller address" data-i18n-aria-label="setup.copyLabel" data-i18n="setup.copy">Copy</button></div><span id="copy-result" class="minor" role="status"></span><p class="install-note" data-i18n="setup.install">On iPhone: Share → Add to Home Screen for fullscreen play.</p></section>
+      <div class="setup-right">
+        <section class="readiness" aria-labelledby="ready-title"><div class="panel-heading"><span class="eyebrow" data-i18n="setup.prepareStep">02 / PREPARE RYUJINX</span><span id="ready-count" class="minor" data-i18n="setup.checking">Checking…</span></div><h2 id="ready-title" data-i18n="setup.readyTitle">A good connection starts here.</h2>
+          <ol class="check-list">
+            <li><span class="check-icon" id="backend-icon">·</span><div><h3 data-i18n="setup.keyboardTitle">Mac keyboard bridge</h3><p id="backend-status" data-i18n="checkingKeyboard">Checking the input bridge…</p></div></li>
+            <li><span class="check-icon" id="access-icon">·</span><div><h3 data-i18n="setup.accessTitle">Accessibility permission</h3><p id="access-status" data-i18n="checkingAccess">Checking macOS permission…</p></div></li>
+            <li><span class="check-icon" id="ryu-icon">·</span><div><h3 data-i18n="setup.profilesTitle">Ryujinx controller profiles</h3><p id="ryu-status" data-i18n="setup.readingProfiles">Reading input profiles…</p></div></li>
+            <li><span class="check-icon" id="focus-icon">·</span><div><h3 data-i18n="setup.focusTitle">Ryujinx window active</h3><p id="focus-status" data-i18n="setup.focusWaiting">Connect a controller to check window focus.</p></div></li>
+          </ol>
+          <div class="configure-row"><label for="layout" data-i18n="mode">Controller layout</label><select id="layout"><option value="pro" data-i18n="setup.pro">Full controller (recommended)</option><option value="sideways" data-i18n="setup.sideways">Two sideways Joy-Cons</option></select></div>
+          <p class="minor" data-i18n="setup.beforeApply">Quit Ryujinx before applying. A backup is saved and players 1–2 are updated.</p>
+          <button id="configure" class="primary-button" type="button"><span data-i18n="setup.apply">Set up Ryujinx</span> <span aria-hidden="true">↗</span></button>
+          <p id="configure-result" class="action-result" role="status"></p>
+        </section>
+        <section class="connected-panel" aria-labelledby="players-title"><div class="panel-heading"><h2 id="players-title" data-i18n="setup.yourControllers">Your controllers</h2><span class="eyebrow" id="player-count">0 / 2</span></div><div id="players" class="live-players"></div></section>
       </div>
     </div>
-
-    <footer><span id="t-version"></span>estado crudo en <a href="/status" style="color:var(--blue)">/status</a></footer>
-  </div>
-
-  <script>
-    const $ = (id) => document.getElementById(id);
-    function dot(id, cls) { $(id).className = "dot " + cls; }
-
-    async function refresh() {
-      let st;
-      try {
-        st = await (await fetch("/status")).json();
-      } catch {
-        dot("d-backend", "err"); $("t-backend").textContent = "Server no responde";
-        return;
-      }
-
-      $("t-url").textContent = location.origin;
-
-      if (st.native) { dot("d-backend", "ok"); $("t-backend").textContent = "Teclado nativo (nut-js) listo"; }
-      else { dot("d-backend", "warn"); $("t-backend").textContent = "Backend de consola — las teclas NO llegan a Ryujinx"; }
-
-      if (st.accessibility === true) { dot("d-access", "ok"); $("t-access").textContent = "Permiso de Accesibilidad concedido"; $("h-access").hidden = true; }
-      else if (st.accessibility === false) { dot("d-access", "err"); $("t-access").textContent = "Falta el permiso de Accesibilidad"; $("h-access").hidden = false; }
-      else { dot("d-access", "warn"); $("t-access").textContent = "Permiso de Accesibilidad: desconocido"; }
-
-      if (st.ryujinxFocused === true) { dot("d-focus", "ok"); $("t-focus").textContent = "Ryujinx tiene el foco"; $("h-focus").hidden = true; }
-      else if (st.ryujinxFocused === false) { dot("d-focus", "warn"); $("t-focus").textContent = "Al frente: " + (st.focusApp || "otra app"); $("h-focus").hidden = false; }
-      else { dot("d-focus", "off"); $("t-focus").textContent = "Foco: esperando jugadores"; $("h-focus").hidden = true; }
-
-      if (st.version) $("t-version").textContent = `joypad-air v${st.version} · `;
-
-      if (st.ryujinx?.found === false) {
-        dot("d-ryu", "warn"); $("t-ryu").textContent = "Ryujinx no detectado (¿está instalado?)"; $("h-ryu").hidden = true;
-      } else if (st.ryujinx?.synced === true) {
-        dot("d-ryu", "ok"); $("t-ryu").textContent = "Ryujinx configurado (mandos sincronizados)"; $("h-ryu").hidden = true;
-      } else if (st.ryujinx?.synced === false) {
-        dot("d-ryu", "err"); $("t-ryu").textContent = "Ryujinx SIN configurar"; $("h-ryu").hidden = false;
-      } else {
-        dot("d-ryu", "off"); $("t-ryu").textContent = "Ryujinx: comprobando…";
-      }
-
-      const dsuSlots = st.dsu && st.dsu.slots ? Object.values(st.dsu.slots).filter(Boolean) : [];
-      if (st.dsu && st.dsu.listening) {
-        dot("d-dsu", dsuSlots.length ? "ok" : "off");
-        $("t-dsu").textContent = dsuSlots.length
-          ? `Motion activo (${dsuSlots.map((s) => s.hz + " Hz").join(", ")})`
-          : "Motion (DSU) en espera — activa GIRO en el iPhone";
-      } else {
-        dot("d-dsu", "off"); $("t-dsu").textContent = "Motion (DSU) desactivado";
-      }
-
-      for (const n of [1, 2]) {
-        const p = st.players?.[n];
-        const badge = $(`p${n}-badge`);
-        if (p?.connected) {
-          badge.textContent = "conectado"; badge.className = "badge on";
-          $(`p${n}-name`).textContent = p.name || `Chocorramito ${n}`;
-          $(`p${n}-meta`).textContent =
-            (p.rttMs != null ? `${p.rttMs} ms · ` : "") +
-            `${p.msgsPerSec || 0} msg/s` +
-            (p.motion ? " · giro ✓" : "");
-        } else {
-          badge.textContent = "libre"; badge.className = "badge off";
-          $(`p${n}-meta`).textContent = "—";
-        }
-      }
-    }
-
-    refresh();
-    setInterval(refresh, 2000);
-  </script>
-</body>
-</html>
+    <details class="help"><summary><span data-i18n="setup.tipsTitle">Connection tips &amp; motion controls</span> <span aria-hidden="true">+</span></summary><div class="help-grid"><div><h3 data-i18n="setup.noInputTitle">Connected, but no input?</h3><p data-i18n="setup.noInputHelp">Allow Accessibility for the app running the server (Terminal or Codex) in System Settings → Privacy & Security → Accessibility. Recheck here, then click the Ryujinx game window. Input pauses when you switch away.</p></div><div><h3 data-i18n="setup.motionTitle">Using motion controls?</h3><p data-i18n="setup.motionHelp">Buttons work over Wi-Fi in the browser. Phone sensors require HTTPS or the native Expo app. Stock Ryujinx ignores gyro from keyboard controllers; it needs the project’s motion patch.</p></div><div><h3 data-i18n="setup.coopTitle">Playing together?</h3><p data-i18n="setup.coopHelp">Each phone chooses a different player. Some games require separate physical controllers and will reject two keyboard-backed players. Choose a layout that your game supports.</p></div></div></details>
+  </main>
+  <footer class="lobby-footer"><span class="eyebrow" data-i18n="setup.footer">LOCAL CONNECTION / NO ACCOUNT REQUIRED</span><span class="footer-mark" id="server-version">JOYPAD AIR</span></footer>
+</div>
+<script type="module" src="setup.js"></script>
+</body></html>

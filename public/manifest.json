@@ -1,7 +1,7 @@
 {
   "name": "El Control Super Pro Max",
   "short_name": "Control Pro Max",
-  "description": "Mando virtual para Ryujinx en Mac",
+  "description": "Use your phone as a controller for Ryujinx on Mac",
   "start_url": "./",
   "display": "fullscreen",
   "orientation": "landscape",
@@ -14,5 +14,6 @@
       "type": "image/svg+xml",
       "purpose": "any"
     }
-  ]
+  ],
+  "lang": "en"
 }

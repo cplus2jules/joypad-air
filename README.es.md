@@ -7,6 +7,12 @@ Gratis, open source, sin anuncios y sin tracking.
 
 > English README: [README.md](README.md)
 
+## App local en Swift para Just Dance
+
+El mando nativo para iPhone, el puente de emparejamiento local y una versión independiente de Ryujinx con movimiento están disponibles para pruebas. Consulta el [estado de implementación](docs/motion-implementation-status.md), la [guía de instalación en iPhone](docs/local-device-setup.md) y el [contrato de sensores](docs/motion-coordinate-contract.md). Ejecuta `JOYPAD_LANG=es npm run start:paired` en Terminal y abre el enlace de emparejamiento que aparece. Todavía falta verificar la puntuación real en Just Dance; el plan completo de las apps Swift sigue en desarrollo.
+
+Usa `npm run start:dance` para el perfil aislado de Just Dance y `npm run ryujinx:launch` para la versión local seleccionada del emulador. La configuración original del navegador sigue disponible. Los datos privados y las compilaciones locales se guardan en `.local/`, excluido de Git.
+
 ## Requisitos
 
 - Un Mac (Apple Silicon o Intel)
@@ -80,7 +86,7 @@ giro, y que el emulador lo *escuche*.
   `DSU_HOST=0.0.0.0` y apunta a la IP del Mac.)
 - **Ryujinx**: el build oficial **ignora** los servidores DSU cuando los
   botones entran por teclado (verificado en su código fuente). Incluimos un
-  parche MIT de ~40 líneas ([tools/ryubing-motion.patch](tools/ryubing-motion.patch))
+  parche local ([tools/ryubing-motion.patch](tools/ryubing-motion.patch))
   y un script que clona el código del fork Ryubing, lo aplica y compila un
   **"Ryujinx Motion.app"** en tu propia máquina (~15 min; no distribuimos
   binarios del emulador):
@@ -141,3 +147,22 @@ npm run ryujinx:check  # ¿la config de Ryujinx está sincronizada?
 `public/` = mando web (la vía soportada para terceros) · `app/` = app nativa
 Expo (giro; correr con expo start) · `server/` = motor Node · `tools/` =
 setup de Ryujinx, parche motion y tests. Licencia MIT.
+
+## Idiomas
+
+El mando web, el panel de configuración y la app nativa están disponibles en
+**English** y **Español**. Elige el idioma en la pantalla de conexión o en Ajustes.
+La elección se guarda en el dispositivo y la interfaz se actualiza sin desconectar
+el mando. En la primera visita se usa el idioma del dispositivo, con inglés como alternativa.
+
+Los mensajes de Terminal están en inglés de forma predeterminada, tanto al ejecutar
+`npm start` como los comandos de configuración de Ryujinx. Para iniciar el servidor
+en español:
+
+```bash
+JOYPAD_LANG=es npm start
+```
+
+Usa `JOYPAD_LANG=es npm run ryujinx:setup` para configurar Ryujinx en español, o
+`JOYPAD_LANG=en` para elegir inglés. Reinicia el servidor tras cambiar este ajuste.
+El idioma de Terminal es independiente del que elijas en el teléfono.

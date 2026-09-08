@@ -3,6 +3,7 @@ import {
   Animated,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +14,8 @@ import { useBatteryLevel } from 'expo-battery';
 import { C, JOYCON_DARK_INK, SHADOW, resolveTheme } from '../theme';
 import { haptic, depth } from '../haptics';
 import { detectHost, SERVER_PORT } from '../net/connection';
+import { useI18n } from '../i18n';
+import LanguagePicker from '../components/LanguagePicker';
 import { useSettings } from '../store/settings';
 
 const AMBER = '#faa005';
@@ -169,6 +172,7 @@ function ModeCard({ id, label, sublabel, active, onPress, colorL = C.red, colorR
 // habitual: lastSlot → anillo "tu mando habitual".
 // Long-press → abre Ajustes con ese perfil preseleccionado.
 function PlayerCard({ player, onPick, occupied = null, habitual = false, onLongPress }) {
+  const { t } = useI18n();
   const isP1 = player === 1;
   // Tema y nombre del perfil del jugador (P1 = lado L, P2 = lado R)
   const { settings } = useSettings();
@@ -242,10 +246,10 @@ function PlayerCard({ player, onPick, occupied = null, habitual = false, onLongP
                 style={[s.playerCardKicker, darkInk && { color: 'rgba(0,0,0,0.55)' }]}
                 numberOfLines={1}
               >
-                {profile.name.toUpperCase()}
+                {(profile.name || t('player', { n: player })).toUpperCase()}
               </Text>
               <Text style={[s.playerCardCTA, darkInk && { color: JOYCON_DARK_INK }]}>
-                Empezar ›
+                {t('start')}
               </Text>
             </View>
             {occupied != null && (
@@ -262,7 +266,7 @@ function PlayerCard({ player, onPick, occupied = null, habitual = false, onLongP
                   style={[s.slotBadgeText, { color: occupied ? AMBER : C.ok }]}
                   numberOfLines={1}
                 >
-                  {occupied ? 'ocupado — toca para reemplazar' : 'libre'}
+                  {t(occupied ? 'replace' : 'available')}
                 </Text>
               </View>
             )}
@@ -270,7 +274,7 @@ function PlayerCard({ player, onPick, occupied = null, habitual = false, onLongP
         </Animated.View>
       </Pressable>
       <Text style={[s.habitualCaption, !habitual && { opacity: 0 }]} numberOfLines={1}>
-        tu mando habitual
+        {t('habitual')}
       </Text>
     </View>
   );
@@ -278,6 +282,7 @@ function PlayerCard({ player, onPick, occupied = null, habitual = false, onLongP
 
 // ── Picker ──────────────────────────────────────────────
 export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
+  const { t } = useI18n();
   const { settings, ready, update } = useSettings();
   // Prioriza el host manual (settings.host) sobre la autodetección
   const host = detectHost(settings.host);
@@ -343,9 +348,9 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
   const showFirstTimeHint = !host || !settings.onboarded;
 
   const layouts = [
-    { id: 'full',  label: 'Pareja',     sublabel: 'Dos joycons' },
-    { id: 'left',  label: 'Joy-Con L',  sublabel: 'Sólo izquierdo' },
-    { id: 'right', label: 'Joy-Con R',  sublabel: 'Sólo derecho' },
+    { id: 'full',  label: t('full'), sublabel: t('fullHint') },
+    { id: 'left',  label: t('left'), sublabel: t('leftHint') },
+    { id: 'right', label: t('right'), sublabel: t('rightHint') },
   ];
 
   return (
@@ -354,6 +359,8 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
 
       <Pressable
         onPress={() => { haptic.select(); onOpenSettings?.(); }}
+        accessibilityRole="button"
+        accessibilityLabel={t('settings')}
         style={s.gearBtn}
         hitSlop={8}
       >
@@ -365,15 +372,16 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
         <Animated.View
           style={[s.pickerLeft, { opacity: fade1, transform: [{ translateY: slide }] }]}
         >
-          <Text style={s.brandKicker}>EL CONTROL</Text>
+          <ScrollView contentContainerStyle={s.brandContent} showsVerticalScrollIndicator={false}>
+          <Text style={s.brandKicker}>{t('brand')}</Text>
           <Text style={s.brandTitle}>Super{'\n'}Pro Max</Text>
           <View style={s.brandMeta}>
             <View style={[s.brandDot, { backgroundColor: host ? C.ok : C.err }]} />
             <Text style={s.brandHost}>
-              {host ? `${host}:${SERVER_PORT}` : 'sin Mac'}
+              {host ? `${host}:${SERVER_PORT}` : t('noHost')}
             </Text>
             {host && settings.host ? (
-              <Pressable onPress={clearManualHost} hitSlop={8} style={s.hostClearBtn}>
+              <Pressable accessibilityRole="button" accessibilityLabel={t('clearHost')} onPress={clearManualHost} hitSlop={8} style={s.hostClearBtn}>
                 <Text style={s.hostClearText}>×</Text>
               </Pressable>
             ) : null}
@@ -385,7 +393,8 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
                 value={hostInput}
                 onChangeText={setHostInput}
                 onSubmitEditing={connectManualHost}
-                placeholder="IP del Mac, ej: 192.168.1.50"
+                placeholder={t('hostPlaceholder')}
+                accessibilityLabel={t('hostLabel')}
                 placeholderTextColor="rgba(255,255,255,0.25)"
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -397,28 +406,29 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
                 onPress={connectManualHost}
                 style={[s.hostConnectBtn, !hostInput.trim() && { opacity: 0.4 }]}
               >
-                <Text style={s.hostConnectText}>Conectar</Text>
+                <Text style={s.hostConnectText}>{t('connect')}</Text>
               </Pressable>
             </View>
           )}
           <Text style={s.batteryText}>
             🔋 {battery >= 0 ? `${Math.round(battery * 100)}%` : '—'}
           </Text>
+          <LanguagePicker />
           {showFirstTimeHint && (
             <Animated.Text style={[s.firstTimeHint, { opacity: fade4 }]}>
-              Primera vez: corre Play.app (o mandos.command) en el Mac y
-              conéctate a su WiFi
+              {t('firstTime')}
             </Animated.Text>
           )}
           <Animated.Text style={[s.footerLeft, { opacity: fade4 }]}>
-            Conecta el segundo iPhone para co-op local
+            {t('coop')}
           </Animated.Text>
+          </ScrollView>
         </Animated.View>
 
         {/* ─── Right column: mode + players ─── */}
         <View style={s.pickerRight}>
           <Animated.View style={[s.modeBlock, { opacity: fade2 }]}>
-            <Text style={s.proSectionLabel}>Modo</Text>
+            <Text style={s.proSectionLabel}>{t('mode')}</Text>
             <View style={s.modeGrid}>
               {layouts.map((l) => (
                 <ModeCard
@@ -439,7 +449,7 @@ export default function Picker({ layout, onLayout, onPick, onOpenSettings }) {
           </Animated.View>
 
           <Animated.View style={[s.playerBlock, { opacity: fade3 }]}>
-            <Text style={s.proSectionLabel}>Jugador</Text>
+            <Text style={s.proSectionLabel}>{t('players')}</Text>
             <View style={s.playerGrid}>
               {[1, 2].map((n) => (
                 <PlayerCard
@@ -518,6 +528,7 @@ const s = StyleSheet.create({
     paddingVertical: 20,
     gap: 28,
   },
+  brandContent: { flexGrow: 1, justifyContent: 'space-between', gap: 6, paddingBottom: 8 },
   pickerLeft: {
     width: 230,
     justifyContent: 'space-between',
