@@ -24,6 +24,7 @@
     "start": "node server/index.js",
     "start:dance": "node tools/start-dance.mjs",
     "start:paired": "node tools/start-pairing.mjs",
+    "play": "node tools/start-pairing.mjs --launch",
     "dev": "node --watch server/index.js",
     "test": "node tools/smoke-test.mjs",
     "ryujinx:setup": "node tools/ryujinx-setup.mjs",
@@ -35,6 +36,7 @@
     "ryujinx:launch": "bash tools/ryujinx-build/launch-local.sh",
     "test:motion": "node --test tools/motion-test.mjs",
     "test:pairing": "node --test tools/pairing-test.mjs",
+    "test:launcher": "node --test tools/launcher-test.mjs",
     "ryujinx:check": "node tools/ryujinx-setup.mjs --check",
     "test:i18n": "node --test tools/i18n-test.mjs",
     "test:ryujinx": "node --test tools/ryujinx-test.mjs"

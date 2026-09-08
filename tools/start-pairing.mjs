@@ -4,11 +4,13 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { startPairingServer } from '../server/pairing.js';
 import { inspectRyujinx } from '../server/ryujinx.js';
+import { checkDesktopLaunch, runningPairing, openDesktop } from './paired-desktop.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const configDir = process.env.RYUJINX_CONFIG_DIR || fileURLToPath(new URL('../.local/ryujinx-motion-data', import.meta.url));
 const spanish = /^es(?:[-_]|$)/i.test(process.env.JOYPAD_LANG || '');
 const say = (en, es) => console.log(spanish ? es : en);
+const launchDesktop = process.argv.includes('--launch');
 function port(name, fallback) {
   const value = Number(process.env[name] || fallback);
   if (!Number.isInteger(value) || value < 1024 || value > 65535) throw new Error(`${name}: expected port 1024–65535`);
@@ -28,6 +30,7 @@ async function stop(code = 0) {
 }
 process.once('SIGINT', () => void stop());
 process.once('SIGTERM', () => void stop());
+process.once('SIGHUP', () => void stop());
 
 try {
   const upstreamPort = port('PAIRING_BRIDGE_PORT', 3001);
@@ -37,6 +40,20 @@ try {
   if (new Set([upstreamPort, httpsPort, setupPort]).size !== 3) throw new Error('HTTP, setup and internal bridge ports must differ.');
   if (process.env.FORCE_LOG !== '1' && !inspectRyujinx(configDir, { preset:'just-dance', dsuPort }).synced) {
     throw new Error(spanish ? 'Falta el perfil local de Just Dance. Consulta docs/motion-implementation-status.md.' : 'The isolated Just Dance profile is missing or changed. See docs/motion-implementation-status.md.');
+  }
+  if (launchDesktop) {
+    await checkDesktopLaunch();
+    if (stopped) throw new Error('Startup was interrupted.');
+    if (await runningPairing({ setupPort, upstreamPort, httpsPort, dsuPort })) {
+      if (stopped) throw new Error('Startup was interrupted.');
+      say('Joypad Air is already running. Reusing the bridge in its original Terminal window.',
+        'Joypad Air ya está activo. Se usará el puente de su ventana original de Terminal.');
+      await openDesktop(`http://127.0.0.1:${setupPort}/`);
+      say('Connect your saved Mac in the iPhone app, then turn on Enable Motion. Keep the original Terminal open.',
+        'Conecta el Mac guardado en el iPhone y activa Enable Motion. Mantén abierta la Terminal original.');
+      process.exit(0);
+    }
+    if (stopped) throw new Error('Startup was interrupted.');
   }
   let ready = false, startupTail = '';
   child = spawn(process.execPath, ['server/index.js'], {
@@ -67,6 +84,13 @@ try {
   say(`Open pairing on this Mac: ${pairing.setupURL}`, `Abre el enlace de emparejamiento en este Mac: ${pairing.setupURL}`);
   say('Scan its QR in Joypad Air on your iPhone. Saved phones reconnect securely. Leave Terminal open.',
     'Escanea el QR desde Joypad Air en el iPhone. Los teléfonos guardados se reconectan de forma segura. Deja Terminal abierto.');
+  if (launchDesktop) {
+    await openDesktop(pairing.setupURL);
+    say('Open your game, connect the iPhone, then turn on Enable Motion. Keep this Terminal open while playing.',
+      'Abre el juego, conecta el iPhone y activa Enable Motion. Mantén esta Terminal abierta mientras juegas.');
+    say('Ctrl+C stops the phone bridge. Quit Ryujinx normally when you finish playing.',
+      'Ctrl+C detiene el puente del teléfono. Cierra Ryujinx normalmente al terminar de jugar.');
+  }
 } catch (error) {
   console.error(`[pairing] ${error.message}`);
   await stop(1);

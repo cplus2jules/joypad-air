@@ -25,6 +25,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 
 ## Pair with the Mac
 
+For daily use, double-click **Joypad Air.command** in the project folder (or run `npm run play`). It opens Terminal, starts or reuses the paired bridge, opens the pairing page, and launches the selected local Ryujinx Motion build. Keep the bridge's Terminal open while playing. Connect the remembered Mac on the iPhone and enable motion each time. To place the launcher on the Desktop, make a Finder alias rather than moving it out of the project. The separate manual commands below remain available.
+
 Coordinate the bridge transition with any active controller session. The paired entry point owns its internal bridge; do not leave a second unauthenticated bridge exposed on the network.
 
 1. In a Terminal with the existing keyboard/Accessibility permissions, run `npm run start:paired` from the repository root. Keep Terminal open.

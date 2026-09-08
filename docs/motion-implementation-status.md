@@ -19,6 +19,8 @@ The user subsequently requested full native menu controls and device pairing. Th
 
 ## Start the local test
 
+For a single daily entry point, double-click **Joypad Air.command** in the project folder, or run `npm run play`. It starts or reuses the paired bridge, opens the pairing page, then launches the selected local emulator. Keep the bridge's Terminal window open, connect your saved Mac on the iPhone, and turn on **Enable Motion**. The launcher simplifies startup; it does not calibrate motion or change reconnect timing.
+
 Use Terminal, which already had Accessibility permission during the working browser-button test:
 
 ```sh

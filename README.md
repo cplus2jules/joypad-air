@@ -9,7 +9,9 @@ A.K.A. **"El Control Super Pro Max"** · Guía en español: [README.es.md](READM
 
 ## Local Swift app for Just Dance
 
-The native iPhone controller, local pairing bridge and separate patched Ryujinx build are available for testing. Start with the [implementation status](docs/motion-implementation-status.md), [iPhone installation guide](docs/local-device-setup.md), and [sensor contract](docs/motion-coordinate-contract.md). Launch paired mode with `npm run start:paired` in Terminal, then open the Mac pairing URL it prints. The real-phone Just Dance scoring test is still required; the full Swift app plan is not complete.
+The native iPhone controller, local pairing bridge and separate patched Ryujinx build are available for testing. Start with the [implementation status](docs/motion-implementation-status.md), [iPhone installation guide](docs/local-device-setup.md), and [sensor contract](docs/motion-coordinate-contract.md). Double-click **Joypad Air.command** in Finder to start the pairing bridge, open its pairing page, and launch the selected Ryujinx Motion build. Connect your saved Mac on the iPhone and turn on **Enable Motion**. Keep the launcher's Terminal window open while playing. The real-phone Just Dance scoring test is still required; the full Swift app plan is not complete.
+
+The launcher reuses a running paired bridge and brings the selected emulator forward if it is already open. If it reuses a bridge, keep that bridge's original Terminal open. Closing Terminal stops its bridge; quit the emulator normally when finished. Keep the launcher in this project folder, or make a Finder alias for your Desktop. The equivalent command is `npm run play`; `npm run start:paired` still starts only the bridge.
 
 Use `npm run start:dance` for the isolated Just Dance preset and `npm run ryujinx:launch` for the selected local emulator build. Keep the original browser setup as the fallback. Development builds and private local emulator data stay under the ignored `.local/` directory.
 
